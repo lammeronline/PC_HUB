@@ -23,3 +23,6 @@
 #define WIFI_PASSWORD "q2795844q"
 #define NTP_SERVER    "pool.ntp.org"
 #define NTP_OFFSET    10800  // UTC+3 (Москва)
+
+// --- Weather (Open-Meteo) ---
+#define WEATHER_CITY "Dnipro"  // Название города на английском

@@ -74,7 +74,7 @@ bool syncRTCfromNTP() {
         ));
     }
 
-    WiFi.disconnect(true);
+    // WiFi не отключаем — нужен для запросов погоды
     Serial.println("NTP: OK");
     return true;
 }
