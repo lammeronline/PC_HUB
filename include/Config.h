@@ -17,3 +17,9 @@
 #define LED_R 22
 #define LED_G 16
 #define LED_B 17
+
+// --- WiFi / NTP ---
+#define WIFI_SSID     "Interneta.NET (2.4 GHz)"
+#define WIFI_PASSWORD "q2795844q"
+#define NTP_SERVER    "pool.ntp.org"
+#define NTP_OFFSET    10800  // UTC+3 (Москва)

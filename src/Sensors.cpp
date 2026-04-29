@@ -4,6 +4,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME680.h>
 #include <RTClib.h>
+#include <WiFi.h>
+#include <time.h>
 
 Adafruit_BME680 bme;
 RTC_DS3231 rtc;
@@ -35,6 +37,46 @@ void initSensors() {
         bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
         bme.setGasHeater(320, 150);
     }
+}
+
+bool syncRTCfromNTP() {
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        attempts++;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.disconnect(true);
+        Serial.println("NTP: WiFi FAILED");
+        return false;
+    }
+
+    configTime(NTP_OFFSET, 0, NTP_SERVER);
+
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo, 5000)) {
+        WiFi.disconnect(true);
+        Serial.println("NTP: time FAILED");
+        return false;
+    }
+
+    if (_rtc_found) {
+        rtc.adjust(DateTime(
+            timeinfo.tm_year + 1900,
+            timeinfo.tm_mon + 1,
+            timeinfo.tm_mday,
+            timeinfo.tm_hour,
+            timeinfo.tm_min,
+            timeinfo.tm_sec
+        ));
+    }
+
+    WiFi.disconnect(true);
+    Serial.println("NTP: OK");
+    return true;
 }
 
 // Функция обновления данных, заполняет нашу структуру

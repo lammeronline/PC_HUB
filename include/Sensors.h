@@ -15,3 +15,4 @@ struct SensorData {
 // Объявляем функции, которые будем вызывать из main
 void initSensors();
 void updateSensors(SensorData &data);
+bool syncRTCfromNTP(); // Синхронизация RTC по NTP, возвращает true при успехе

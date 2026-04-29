@@ -30,6 +30,11 @@ void setup() {
   initSensors();
   uint64_t sdSize = initSDCard();
 
+  tft.setCursor(10, y_pos); y_pos += 30;
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  tft.println("NTP sync...");
+  bool ntp_ok = syncRTCfromNTP();
+
   updateSensors(currentData);
 
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -40,12 +45,15 @@ void setup() {
   tft.print("BME680: "); tft.println(currentData.bme_ok ? "OK" : "FAILED");
 
   tft.setCursor(10, y_pos); y_pos += 30;
-  tft.print("SD Card: "); 
+  tft.print("SD Card: ");
   if (sdSize > 0) {
       tft.print(sdSize); tft.println(" MB");
   } else {
       tft.println("FAILED");
   }
+
+  tft.setCursor(10, y_pos); y_pos += 30;
+  tft.print("NTP: "); tft.println(ntp_ok ? "OK" : "FAILED");
 
   // Логика светодиода после загрузки:
   // Если всё ок - Зеленый. Если хоть что-то отвалилось - Красный.
