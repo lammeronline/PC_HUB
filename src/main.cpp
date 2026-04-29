@@ -3,14 +3,17 @@
 #include "Config.h"
 #include "Sensors.h"
 #include "SDCard.h"
+#include "Led.h" // Подключили LED!
 
 TFT_eSPI tft = TFT_eSPI();
-SensorData currentData; // Создаем объект структуры для хранения данных
+SensorData currentData; 
 
 void setup() {
   Serial.begin(115200);
 
-  // Включаем дисплей
+  initLED(); // Инициализируем светодиод
+  setLED(0, 0, 255); // Зажигаем СИНИМ (загрузка)
+
   pinMode(TFT_BL_PIN, OUTPUT);
   digitalWrite(TFT_BL_PIN, HIGH); 
   tft.init();
@@ -24,11 +27,9 @@ void setup() {
   
   int y_pos = 40;
 
-  // Инициализируем датчики и карту
   initSensors();
   uint64_t sdSize = initSDCard();
 
-  // Выводим статусы на экран загрузки (пока берем сырые статусы из структуры)
   updateSensors(currentData);
 
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -46,8 +47,17 @@ void setup() {
       tft.println("FAILED");
   }
 
+  // Логика светодиода после загрузки:
+  // Если всё ок - Зеленый. Если хоть что-то отвалилось - Красный.
+  if (currentData.rtc_ok && currentData.bme_ok && sdSize > 0) {
+      setLED(0, 255, 0); // Зеленый
+  } else {
+      setLED(255, 0, 0); // Красный
+  }
+
   delay(2000); 
   tft.fillScreen(TFT_BLACK); 
+  offLED(); // Выключаем светодиод, чтобы не слепил в рабочем режиме
 }
 
 void loop() {

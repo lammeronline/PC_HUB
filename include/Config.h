@@ -12,3 +12,8 @@
 
 // --- Дисплей ---
 #define TFT_BL_PIN 27 // Подсветка
+
+// --- RGB LED ---
+#define LED_R 22
+#define LED_G 16
+#define LED_B 17
