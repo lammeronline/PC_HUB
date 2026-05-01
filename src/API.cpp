@@ -1,9 +1,11 @@
 #include "API.h"
+#include "Config.h"
 #include "Logger.h"
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <ESPmDNS.h>
 
 static WebServer server(80);
 static const SensorData *_sensor = nullptr;
@@ -24,9 +26,12 @@ static void handleStatus() {
     }
 
     JsonDocument doc;
-    doc["ok"] = true;
-    doc["ip"] = WiFi.localIP().toString();
-    doc["log_path"] = readingsLogPath();
+    doc["ok"]           = true;
+    doc["device"]       = DEVICE_NAME;
+    doc["ip"]           = WiFi.localIP().toString();
+    doc["hostname"]     = DEVICE_NAME ".local";
+    doc["wind_unit"]    = WIND_UNIT_MS ? "m/s" : "km/h";
+    doc["log_path"]     = readingsLogPath();
     doc["logger_ready"] = loggerReady();
 
     JsonObject sensor = doc["sensor"].to<JsonObject>();
@@ -96,10 +101,14 @@ void initAPI(const SensorData *sensor, const WeatherData *weather, bool sdReady)
         server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
     });
 
+    MDNS.begin(DEVICE_NAME);
+    MDNS.addService("http", "tcp", 80);
+
     server.begin();
     _apiReady = true;
 
-    Serial.printf("API: OK http://%s/api/status\n", WiFi.localIP().toString().c_str());
+    Serial.printf("API: OK http://%s.local/  (%s)\n",
+                  DEVICE_NAME, WiFi.localIP().toString().c_str());
 }
 
 void handleAPI() {

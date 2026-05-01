@@ -47,7 +47,7 @@ void logReading(const SensorData &sensor, const WeatherData &weather) {
     }
 
     file.printf("\"%s\",%d,%d,%.2f,%.2f,%.2f,%.2f,%d,%.2f,%d,%.2f,%d\n",
-                sensor.timeStr.c_str(),
+                sensor.timeStr,
                 sensor.rtc_ok ? 1 : 0,
                 sensor.bme_ok ? 1 : 0,
                 sensor.temperature,

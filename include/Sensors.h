@@ -3,13 +3,14 @@
 
 // Структура для хранения всех показаний
 struct SensorData {
-    bool rtc_ok = false;
-    bool bme_ok = false;
-    String timeStr = "--.--.----  --:--:--";
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    float pressure = 0.0f;
-    float gas = 0.0f;
+    bool    rtc_ok  = false;
+    bool    bme_ok  = false;
+    char    timeStr[21] = "--.--.----  --:--:--";
+    uint8_t weekday = 0;   // 0=Sun … 6=Sat
+    float   temperature = 0.0f;
+    float   humidity    = 0.0f;
+    float   pressure    = 0.0f;
+    float   gas         = 0.0f;
 };
 
 // Объявляем функции, которые будем вызывать из main

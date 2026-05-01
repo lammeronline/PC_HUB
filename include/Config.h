@@ -24,8 +24,14 @@
 #define NTP_SERVER    "pool.ntp.org"
 #define NTP_OFFSET    10800
 
+// Device name — used as mDNS hostname (http://DEVICE_NAME.local/)
+#define DEVICE_NAME "pchub"
+
 // Weather (Open-Meteo)
 #define WEATHER_CITY "Dnipro"
+
+// Wind speed unit: 0 = km/h,  1 = m/s
+#define WIND_UNIT_MS 1
 
 // Update intervals
 #define WEATHER_UPDATE_INTERVAL_SEC 600

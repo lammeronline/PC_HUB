@@ -10,8 +10,8 @@
 Adafruit_BME680 bme;
 RTC_DS3231 rtc;
 
-bool _bme_found = false;
-bool _rtc_found = false;
+static bool _bme_found = false;
+static bool _rtc_found = false;
 
 void initSensors() {
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -41,6 +41,7 @@ void initSensors() {
 
 bool syncRTCfromNTP() {
     WiFi.persistent(false);
+    WiFi.setHostname(DEVICE_NAME);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int attempts = 0;
@@ -88,12 +89,14 @@ void updateSensors(SensorData &data) {
     if (_rtc_found) {
         DateTime now = rtc.now();
         char timeBuf[32];
-        snprintf(timeBuf, sizeof(timeBuf), "%02d.%02d.%04d  %02d:%02d:%02d", 
-                now.day(), now.month(), now.year(), 
-                now.hour(), now.minute(), now.second());
-        data.timeStr = String(timeBuf);
+        snprintf(timeBuf, sizeof(timeBuf), "%02d.%02d.%04d  %02d:%02d:%02d",
+                 now.day(), now.month(), now.year(),
+                 now.hour(), now.minute(), now.second());
+        strncpy(data.timeStr, timeBuf, sizeof(data.timeStr));
+        data.weekday = now.dayOfTheWeek();   // 0=Sun … 6=Sat
     } else {
-        data.timeStr = "--.--.----  --:--:--";
+        strncpy(data.timeStr, "--.--.----  --:--:--", sizeof(data.timeStr));
+        data.weekday = 0;
     }
 
     if (_bme_found && bme.performReading()) {
