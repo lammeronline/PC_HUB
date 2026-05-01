@@ -40,6 +40,7 @@ void initSensors() {
 }
 
 bool syncRTCfromNTP() {
+    WiFi.persistent(false);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int attempts = 0;
@@ -82,7 +83,7 @@ bool syncRTCfromNTP() {
 // Функция обновления данных, заполняет нашу структуру
 void updateSensors(SensorData &data) {
     data.rtc_ok = _rtc_found;
-    data.bme_ok = _bme_found;
+    data.bme_ok = false;
 
     if (_rtc_found) {
         DateTime now = rtc.now();
@@ -91,9 +92,12 @@ void updateSensors(SensorData &data) {
                 now.day(), now.month(), now.year(), 
                 now.hour(), now.minute(), now.second());
         data.timeStr = String(timeBuf);
+    } else {
+        data.timeStr = "--.--.----  --:--:--";
     }
 
     if (_bme_found && bme.performReading()) {
+        data.bme_ok = true;
         data.temperature = bme.temperature;
         data.humidity = bme.humidity;
         data.pressure = bme.pressure / 100.0; // в hPa
