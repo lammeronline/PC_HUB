@@ -7,11 +7,12 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 
-static WebServer server(80);
-static const SensorData *_sensor = nullptr;
+static WebServer          server(80);
+static const SensorData  *_sensor  = nullptr;
 static const WeatherData *_weather = nullptr;
-static bool _apiReady = false;
-static bool _sdReady = false;
+static PCData            *_pcData  = nullptr;
+static bool               _apiReady = false;
+static bool               _sdReady  = false;
 
 static void sendJson(JsonDocument &doc) {
     String out;
@@ -35,27 +36,27 @@ static void handleStatus() {
     doc["logger_ready"] = loggerReady();
 
     JsonObject sensor = doc["sensor"].to<JsonObject>();
-    sensor["rtc_ok"] = _sensor->rtc_ok;
-    sensor["bme_ok"] = _sensor->bme_ok;
-    sensor["time"] = _sensor->timeStr;
+    sensor["rtc_ok"]      = _sensor->rtc_ok;
+    sensor["bme_ok"]      = _sensor->bme_ok;
+    sensor["time"]        = _sensor->timeStr;
     sensor["temperature"] = _sensor->temperature;
-    sensor["humidity"] = _sensor->humidity;
-    sensor["pressure"] = _sensor->pressure;
-    sensor["gas"] = _sensor->gas;
+    sensor["humidity"]    = _sensor->humidity;
+    sensor["pressure"]    = _sensor->pressure;
+    sensor["gas"]         = _sensor->gas;
 
     JsonObject weather = doc["weather"].to<JsonObject>();
-    weather["ok"] = _weather->ok;
-    weather["temperature"] = _weather->temperature;
-    weather["humidity"] = _weather->humidity;
-    weather["wind_speed"] = _weather->wind_speed;
+    weather["ok"]           = _weather->ok;
+    weather["temperature"]  = _weather->temperature;
+    weather["humidity"]     = _weather->humidity;
+    weather["wind_speed"]   = _weather->wind_speed;
     weather["weather_code"] = _weather->weather_code;
 
     JsonArray forecast = weather["forecast"].to<JsonArray>();
     for (int i = 0; i < 7; i++) {
         JsonObject day = forecast.add<JsonObject>();
-        day["day"] = _weather->forecast[i].day;
-        day["temp_min"] = _weather->forecast[i].temp_min;
-        day["temp_max"] = _weather->forecast[i].temp_max;
+        day["day"]          = _weather->forecast[i].day;
+        day["temp_min"]     = _weather->forecast[i].temp_min;
+        day["temp_max"]     = _weather->forecast[i].temp_max;
         day["weather_code"] = _weather->forecast[i].weather_code;
     }
 
@@ -67,36 +68,79 @@ static void handleLog() {
         server.send(404, "text/plain", "Log file not found");
         return;
     }
-
     File file = SD.open(readingsLogPath(), FILE_READ);
     if (!file) {
         server.send(500, "text/plain", "Failed to open log file");
         return;
     }
-
     server.streamFile(file, "text/csv");
     file.close();
+}
+
+// POST /api/pc  — receives PC metrics from the PC Agent (WiFi path)
+static void handlePCPost() {
+    if (!_pcData) {
+        server.send(503, "application/json", "{\"ok\":false,\"error\":\"not ready\"}");
+        return;
+    }
+    String body = server.arg("plain");
+    if (body.isEmpty() && server.args() > 0)
+        body = server.arg(0);   // fallback for some WebServer versions
+    if (body.isEmpty()) {
+        Serial.printf("[PCPost] empty body args=%d ct=%s\n",
+            server.args(), server.header("Content-Type").c_str());
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"empty body\"}");
+        return;
+    }
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+    const char *type = doc["type"] | "";
+    if (strcmp(type, "pc") != 0) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"wrong type\"}");
+        return;
+    }
+    _pcData->cpu_temp       = doc["ct"]  | 0.0f;
+    _pcData->cpu_load       = doc["cl"]  | 0.0f;
+    _pcData->cpu_power      = doc["cp"]  | 0.0f;
+    _pcData->gpu_temp       = doc["gt"]  | 0.0f;
+    _pcData->gpu_load       = doc["gl"]  | 0.0f;
+    _pcData->gpu_vram_used  = doc["gvr"] | (uint16_t)0;
+    _pcData->gpu_vram_total = doc["gvt"] | (uint16_t)0;
+    _pcData->ram_used       = doc["ru"]  | (uint32_t)0;
+    _pcData->ram_total      = doc["rt"]  | (uint32_t)0;
+    _pcData->ok             = true;
+    _pcData->lastMs         = millis();
+    Serial.printf("[PC] CPU=%.0fC/%.0f%% GPU=%.0fC/%.0f%% RAM=%lu/%luMB\n",
+        _pcData->cpu_temp, _pcData->cpu_load,
+        _pcData->gpu_temp, _pcData->gpu_load,
+        (unsigned long)_pcData->ram_used, (unsigned long)_pcData->ram_total);
+    server.send(200, "application/json", "{\"ok\":true}");
 }
 
 static void handleRoot() {
     server.send(200, "text/plain",
                 "PCHUB API\n"
-                "GET /api/status\n"
-                "GET /api/log\n");
+                "GET  /api/status\n"
+                "GET  /api/log\n"
+                "POST /api/pc\n");
 }
 
-bool apiReady() {
-    return _apiReady;
-}
+bool apiReady() { return _apiReady; }
 
-void initAPI(const SensorData *sensor, const WeatherData *weather, bool sdReady) {
-    _sensor = sensor;
+void initAPI(const SensorData *sensor, const WeatherData *weather,
+             PCData *pcData, bool sdReady) {
+    _sensor  = sensor;
     _weather = weather;
+    _pcData  = pcData;
     _sdReady = sdReady;
 
-    server.on("/", HTTP_GET, handleRoot);
-    server.on("/api/status", HTTP_GET, handleStatus);
-    server.on("/api/log", HTTP_GET, handleLog);
+    server.on("/",           HTTP_GET,  handleRoot);
+    server.on("/api/status", HTTP_GET,  handleStatus);
+    server.on("/api/log",    HTTP_GET,  handleLog);
+    server.on("/api/pc",     HTTP_POST, handlePCPost);
     server.onNotFound([]() {
         server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
     });
@@ -112,7 +156,5 @@ void initAPI(const SensorData *sensor, const WeatherData *weather, bool sdReady)
 }
 
 void handleAPI() {
-    if (_apiReady) {
-        server.handleClient();
-    }
+    if (_apiReady) server.handleClient();
 }

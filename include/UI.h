@@ -3,6 +3,7 @@
 #include <TFT_eSPI.h>
 #include "Sensors.h"
 #include "Weather.h"
+#include "PCData.h"
 
 struct UiStatus {
     bool sdReady = false;
@@ -11,6 +12,7 @@ struct UiStatus {
 };
 
 void initUI(TFT_eSPI &display);
+void initPCDisplay(const PCData *pc);   // call after PCData is available
 bool handleUI();
 void invalidateUI();
 void invalidateForecastUI();

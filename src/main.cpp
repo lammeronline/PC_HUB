@@ -8,10 +8,12 @@
 #include "Logger.h"
 #include "API.h"
 #include "UI.h"
+#include "PCAgent.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SensorData  currentData;
 WeatherData weatherData;
+PCData      currentPC;
 
 static const unsigned long SENSOR_INTERVAL_MS = 1000;
 static const unsigned long WEATHER_UPDATE_INTERVAL_MS = WEATHER_UPDATE_INTERVAL_SEC * 1000UL;
@@ -142,7 +144,9 @@ void setup() {
 
     // Finish init
     updateSensors(currentData);
-    initAPI(&currentData, &weatherData, sdReady);
+    initAPI(&currentData, &weatherData, &currentPC, sdReady);
+    initPCAgent(&currentPC);
+    initPCDisplay(&currentPC);
     logReading(currentData, weatherData);
     lastLogWrite     = millis();
     lastSensorUpdate = millis();
@@ -164,6 +168,7 @@ void loop() {
     unsigned long now = millis();
 
     handleAPI();
+    handlePCSerial();
 
     if (handleUI()) {
         drawUI(currentData, weatherData, currentUiStatus());
