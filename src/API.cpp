@@ -9,6 +9,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <Update.h>
 #include <time.h>
 
 static WebServer          server(80);
@@ -67,6 +68,8 @@ static HistoryAccumulator _acc30;
 static uint32_t _hist24Rev = 0;
 static uint32_t _hist7Rev = 0;
 static uint32_t _hist30Rev = 0;
+static bool _otaFailed = false;
+static String _otaMessage;
 
 static HistoryPoint makeHistoryPoint(uint32_t ts, const SensorData &sensor) {
     HistoryPoint p;
@@ -421,6 +424,115 @@ static void handleReboot() {
     ESP.restart();
 }
 
+static bool removePathRecursive(const String &path) {
+    File entry = SD.open(path);
+    if (!entry) return false;
+
+    if (!entry.isDirectory()) {
+        entry.close();
+        return SD.remove(path);
+    }
+
+    bool ok = true;
+    File child = entry.openNextFile();
+    while (child) {
+        String childPath = child.path();
+        bool childIsDir = child.isDirectory();
+        child.close();
+
+        if (childIsDir) {
+            if (!removePathRecursive(childPath)) ok = false;
+            if (!SD.rmdir(childPath)) ok = false;
+        } else if (!SD.remove(childPath)) {
+            ok = false;
+        }
+
+        child = entry.openNextFile();
+    }
+    entry.close();
+    return ok;
+}
+
+static void handleSdClear() {
+    if (!_sdReady) {
+        server.send(503, "application/json", "{\"ok\":false,\"error\":\"sd not ready\"}");
+        return;
+    }
+
+    File root = SD.open("/");
+    if (!root || !root.isDirectory()) {
+        if (root) root.close();
+        server.send(500, "application/json", "{\"ok\":false,\"error\":\"sd open failed\"}");
+        return;
+    }
+
+    bool ok = true;
+    File entry = root.openNextFile();
+    while (entry) {
+        String path = entry.path();
+        bool isDir = entry.isDirectory();
+        entry.close();
+
+        if (isDir) {
+            if (!removePathRecursive(path)) ok = false;
+            if (!SD.rmdir(path)) ok = false;
+        } else if (!SD.remove(path)) {
+            ok = false;
+        }
+
+        entry = root.openNextFile();
+    }
+    root.close();
+
+    initLogger(_sdReady);
+    server.send(ok ? 200 : 500, "application/json",
+                ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"clear failed\"}");
+}
+
+static void otaFail(const char *message) {
+    _otaFailed = true;
+    _otaMessage = message;
+    Update.abort();
+}
+
+static void handleOtaUpload() {
+    HTTPUpload &upload = server.upload();
+
+    if (upload.status == UPLOAD_FILE_START) {
+        _otaFailed = false;
+        _otaMessage = "";
+        Serial.printf("OTA: start %s\n", upload.filename.c_str());
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            otaFail("ota begin failed");
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (!_otaFailed && Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            otaFail("ota write failed");
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (!_otaFailed && !Update.end(true)) {
+            otaFail("ota end failed");
+        }
+        if (!_otaFailed) {
+            Serial.printf("OTA: success %u bytes\n", upload.totalSize);
+        }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        otaFail("ota aborted");
+    }
+}
+
+static void handleOtaDone() {
+    if (_otaFailed) {
+        String out = "{\"ok\":false,\"error\":\"" + jsonEscape(_otaMessage) + "\"}";
+        server.send(500, "application/json", out);
+        return;
+    }
+
+    server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+    delay(500);
+    ESP.restart();
+}
+
 // POST /api/pc  — receives PC metrics from the PC Agent (WiFi path)
 static void handlePCPost() {
     if (!_pcData) {
@@ -480,6 +592,8 @@ static void handleApiInfo() {
                 "GET  /api/scan\n"
                 "GET  /api/history?range=24h|7d|30d\n"
                 "GET  /api/log\n"
+                "POST /api/ota\n"
+                "POST /api/sd/clear\n"
                 "POST /api/reboot\n"
                 "POST /api/pc\n");
 }
@@ -501,6 +615,8 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/scan", HTTP_GET, handleScan);
     server.on("/api/history", HTTP_GET, handleHistory);
     server.on("/api/log",    HTTP_GET,  handleLog);
+    server.on("/api/ota",    HTTP_POST, handleOtaDone, handleOtaUpload);
+    server.on("/api/sd/clear", HTTP_POST, handleSdClear);
     server.on("/api/reboot", HTTP_POST, handleReboot);
     server.on("/api/pc",     HTTP_POST, handlePCPost);
     server.onNotFound([]() {
