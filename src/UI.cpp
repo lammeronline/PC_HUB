@@ -12,18 +12,21 @@ static const int TABBAR_H  = 28;
 static const int CONTENT_Y = 22;                     
 static const int CONTENT_H = TABBAR_Y - CONTENT_Y;   // 190
 
-static const uint16_t C_BG     = TFT_BLACK;
-static const uint16_t C_HEADER = 0x1082;
-static const uint16_t C_PANEL  = 0x18C3;
-static const uint16_t C_STROKE = 0x3A6B;
-static const uint16_t C_TEXT   = TFT_WHITE;
-static const uint16_t C_MUTED  = 0xA514;
-static const uint16_t C_CYAN   = 0x04FF;
-static const uint16_t C_GREEN  = 0x07E0;
-static const uint16_t C_AMBER  = 0xFD00;
-static const uint16_t C_RED    = 0xF986;
-static const uint16_t C_BLUE   = 0x1B9F;
-static const uint16_t C_PILL   = 0x2B7F;
+static const uint16_t C_BG     = 0x0801; // #080d17
+static const uint16_t C_HEADER = 0x1083; // #101827
+static const uint16_t C_PANEL  = 0x1105; // #111a2a
+static const uint16_t C_STROKE = 0x21E9; // #20324f
+static const uint16_t C_BAR_BG = 0x2A8A; // #263551
+static const uint16_t C_TEXT   = 0xEFFF; // #edf5ff
+static const uint16_t C_MUTED  = 0x7C96; // #7890b3
+static const uint16_t C_CYAN   = 0x367F; // #38c7ff
+static const uint16_t C_VIOLET = 0xA45F; // #a884ff
+static const uint16_t C_GREEN  = 0x474F; // #43e884
+static const uint16_t C_AMBER  = 0xFDC5; // #ffbd2e
+static const uint16_t C_ORANGE = 0xFC85; // #ff922e
+static const uint16_t C_RED    = 0xFAAB; // #ff4f5f
+static const uint16_t C_BLUE   = 0x367F;
+static const uint16_t C_PILL   = 0x1948; // #1a2a44
 
 static const char* DOW_NAMES[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
 
@@ -45,7 +48,13 @@ private:
         bool pcOn = false;
         int weatherCode = -999;
         float weatherTemp = -999.0f; // Добавлен кеш температуры погоды
+        uint16_t tempBorderNow = 0xFFFF;
+        uint16_t humBorderNow = 0xFFFF;
+        uint16_t pressBorderNow = 0xFFFF;
         uint16_t airBorderNow = 0xFFFF;
+        uint16_t tempBorderOffline = 0xFFFF;
+        uint16_t humBorderOffline = 0xFFFF;
+        uint16_t pressBorderOffline = 0xFFFF;
         uint16_t airBorderOffline = 0xFFFF;
         
         float cpuTemp = -1, cpuLoad = -1;
@@ -68,28 +77,50 @@ private:
     }
 
     void drawCard(int x, int y, int w, int h, uint16_t border = C_STROKE) {
-        tft->fillRoundRect(x, y, w, h, 5, C_PANEL);
-        tft->drawRoundRect(x, y, w, h, 5, border);
+        tft->fillRoundRect(x, y, w, h, 7, C_PANEL);
+        tft->drawRoundRect(x, y, w, h, 7, C_STROKE);
+        if (border != C_STROKE) tft->fillRect(x + 2, y + 1, w - 4, 2, border);
     }
 
     void drawChip(int x, int y, const char *label, bool ok, uint16_t bg) {
         uint16_t col = ok ? C_GREEN : C_RED;
-        tft->fillRoundRect(x, y, 32, 14, 3, bg);
+        uint16_t fill = ok ? 0x0202 : 0x2001;
+        tft->fillRoundRect(x, y, 32, 14, 3, fill);
         tft->drawRoundRect(x, y, 32, 14, 3, col);
-        drawText(x + 4, y + 2, 1, col, label, 24, bg);
+        drawText(x + 4, y + 2, 1, col, label, 24, fill);
     }
 
     void drawBar(int x, int y, int w, int h, float frac, uint16_t col) {
         frac = constrain(frac, 0.0f, 1.0f);
-        tft->fillRect(x, y, w, h, C_STROKE);
+        tft->fillRoundRect(x, y, w, h, h / 2, C_BAR_BG);
         int fw = (int)(w * frac);
-        if (fw > 0) tft->fillRect(x, y, fw, h, col);
+        if (fw > 0) tft->fillRoundRect(x, y, fw, h, h / 2, col);
     }
 
     uint16_t heatCol(float frac) {
         if (frac > 0.8f) return C_RED;
         if (frac > 0.6f) return C_AMBER;
         return C_CYAN;
+    }
+
+    uint16_t tempColor(float v) {
+        if (v < 18.0f) return C_CYAN;
+        if (v < 26.0f) return C_GREEN;
+        if (v < 30.0f) return C_AMBER;
+        return C_RED;
+    }
+
+    uint16_t humColor(float v) {
+        if (v < 30.0f) return C_AMBER;
+        if (v < 60.0f) return C_GREEN;
+        if (v < 70.0f) return C_VIOLET;
+        return C_RED;
+    }
+
+    uint16_t pressColor(float v) {
+        if (v < 990.0f) return C_AMBER;
+        if (v > 1025.0f) return C_AMBER;
+        return C_GREEN;
     }
 
     // ── Иконки ───────────────────────────────────────────────────────────────
@@ -103,11 +134,11 @@ private:
 
     // ── Хелперы ──────────────────────────────────────────────────────────────
     uint16_t airQColor(float gas) {
-        if (gas >= 300) return 0x07E0;
-        if (gas >= 150) return 0xAFE5;
-        if (gas >= 100) return 0xFFE0;
-        if (gas >=  50) return 0xFD20;
-        return 0xF800;
+        if (gas >= 300) return C_GREEN;
+        if (gas >= 150) return C_GREEN;
+        if (gas >= 100) return C_AMBER;
+        if (gas >=  50) return C_ORANGE;
+        return C_RED;
     }
 
     const char* airQLabel(float gas) {
@@ -164,7 +195,7 @@ private:
         const uint16_t bg = C_HEADER;
         if (chromeDirty) {
             tft->fillRect(0, 0, tft->width(), TASKBAR_H, bg);
-            tft->fillRect(0, TASKBAR_H - 2, tft->width(), 2, C_BLUE);
+            tft->fillRect(0, TASKBAR_H - 1, tft->width(), 1, C_STROKE);
         }
         bool wifiOk = (WiFi.status() == WL_CONNECTED);
         int right = tft->width();
@@ -199,7 +230,6 @@ private:
         const int CY   = CONTENT_Y;
         const int SW   = tft->width();
         const int LCEN = 109;
-        const int WCEN = 261;
 
         bool pcOn = _pc && pcFresh(*_pc);
         if (pcOn != cache.pcOn) {
@@ -232,42 +262,45 @@ private:
             cache.weatherCode = currentCode;
             cache.weatherTemp = weather.temperature;
             
-            tft->fillRect(211, CY + 3, 100, 46, C_PANEL);
+            tft->fillRect(211, CY + 6, 100, 43, C_PANEL);
             tft->drawLine(209, CY + 10, 209, CY + 56, C_STROKE);
-            drawWeatherIcon(291, CY + 26, currentCode, 11);
+            tft->fillRect(211, CY + 3, 100, 2, C_BLUE);
+            drawWeatherIcon(SW - 28, CY + 26, currentCode, 11);
             
             tft->setTextFont(4);
             tft->setTextColor(C_AMBER, C_PANEL);
-            tft->setTextDatum(ML_DATUM);
+            tft->setTextDatum(MR_DATUM);
             tft->setTextPadding(0); // Мы очистили фон вручную fillRect, паддинг не нужен
 
             if (weather.ok) {
                 // Отрисовка температуры
                 char tNum[16];
                 snprintf(tNum, sizeof(tNum), "%.0f", weather.temperature);
-                int tw = tft->textWidth(tNum);
-                tft->drawString(tNum, 213, CY + 26);
+                const int tempRight = SW - 84;
+                tft->drawString(tNum, tempRight, CY + 26);
                 
                 // РУЧНАЯ ОТРИСОВКА КРУЖКА ГРАДУСА (геометрия)
-                int circX = 213 + tw + 4;
+                int circX = tempRight + 4;
                 int circY = CY + 18;
                 tft->drawCircle(circX, circY, 3, C_AMBER);
                 tft->drawCircle(circX, circY, 2, C_AMBER); // Делаем кружок толще
                 
                 // Отрисовка буквы C
+                tft->setTextDatum(ML_DATUM);
                 tft->drawString("C", circX + 6, CY + 26);
+                tft->setTextDatum(MR_DATUM);
             } else {
-                tft->drawString("--", 213, CY + 26);
+                tft->drawString("--", SW - 84, CY + 26);
             }
         }
 
-        tft->setTextDatum(MC_DATUM);
+        tft->setTextDatum(MR_DATUM);
         tft->setTextPadding(98);
         if (weather.ok) fmtWindSpeed(line, sizeof(line), weather.wind_speed);
         else            snprintf(line, sizeof(line), "--");
         tft->setTextFont(2);
         tft->setTextColor(C_CYAN, C_PANEL);
-        tft->drawString(line, WCEN, CY + 53);
+        tft->drawString(line, SW - 16, CY + 53);
         tft->setTextPadding(0);
         tft->setTextDatum(TL_DATUM);
 
@@ -276,21 +309,31 @@ private:
             int w = 73, gap = 4;
             int c1 = 8, c2 = c1+w+gap, c3 = c2+w+gap, c4 = c3+w+gap;
             int cx1 = c1+w/2, cx2 = c2+w/2, cx3 = c3+w/2, cx4 = c4+w/2; 
+            uint16_t tempCol = sensor.bme_ok ? tempColor(sensor.temperature) : C_STROKE;
+            uint16_t humCol = sensor.bme_ok ? humColor(sensor.humidity) : C_STROKE;
+            uint16_t pressCol = sensor.bme_ok ? pressColor(sensor.pressure) : C_STROKE;
             
-            if (contentDirty) {
-                drawCard(c1, CY + 70, w, 46, C_AMBER);
-                drawCard(c2, CY + 70, w, 46, C_CYAN);
-                drawCard(c3, CY + 70, w, 46, C_GREEN);
-                drawIconTemp (cx1, CY + 74, C_AMBER);
-                drawIconHum  (cx2, CY + 74, C_CYAN);
-                drawIconPress(cx3, CY + 74, C_GREEN);
+            if (contentDirty || tempCol != cache.tempBorderNow) {
+                cache.tempBorderNow = tempCol;
+                drawCard(c1, CY + 70, w, 46, tempCol);
+                drawIconTemp(cx1, CY + 77, tempCol);
+            }
+            if (contentDirty || humCol != cache.humBorderNow) {
+                cache.humBorderNow = humCol;
+                drawCard(c2, CY + 70, w, 46, humCol);
+                drawIconHum(cx2, CY + 77, humCol);
+            }
+            if (contentDirty || pressCol != cache.pressBorderNow) {
+                cache.pressBorderNow = pressCol;
+                drawCard(c3, CY + 70, w, 46, pressCol);
+                drawIconPress(cx3, CY + 77, pressCol);
             }
 
             uint16_t airBdr = sensor.bme_ok ? airQColor(sensor.gas) : C_STROKE;
             if (contentDirty || airBdr != cache.airBorderNow) {
                 cache.airBorderNow = airBdr;
                 drawCard(c4, CY + 70, w, 46, airBdr);
-                drawIconAir(cx4, CY + 74, airBdr);
+                drawIconAir(cx4, CY + 77, airBdr);
             }
 
             tft->setTextFont(2);
@@ -298,19 +341,19 @@ private:
             tft->setTextPadding(50); 
 
             snprintf(line, sizeof(line), sensor.bme_ok ? "%.1fC" : "--", sensor.temperature);
-            tft->setTextColor(C_AMBER, C_PANEL);
+            tft->setTextColor(tempCol, C_PANEL);
             tft->drawString(line, cx1, CY + 98);
-            drawBar(cx1-25, CY + 110, 50, 4, sensor.bme_ok ? (sensor.temperature + 10.0f) / 50.0f : 0.0f, C_AMBER);
+            drawBar(cx1-25, CY + 110, 50, 4, sensor.bme_ok ? (sensor.temperature + 10.0f) / 50.0f : 0.0f, tempCol);
 
             snprintf(line, sizeof(line), sensor.bme_ok ? "%d%%" : "--", (int)sensor.humidity);
-            tft->setTextColor(C_CYAN, C_PANEL);
+            tft->setTextColor(humCol, C_PANEL);
             tft->drawString(line, cx2, CY + 98);
-            drawBar(cx2-25, CY + 110, 50, 4, sensor.bme_ok ? sensor.humidity / 100.0f : 0.0f, C_CYAN);
+            drawBar(cx2-25, CY + 110, 50, 4, sensor.bme_ok ? sensor.humidity / 100.0f : 0.0f, humCol);
 
             snprintf(line, sizeof(line), sensor.bme_ok ? "%.0f" : "--", sensor.pressure);
-            tft->setTextColor(C_GREEN, C_PANEL);
+            tft->setTextColor(pressCol, C_PANEL);
             tft->drawString(line, cx3, CY + 98);
-            drawBar(cx3-25, CY + 110, 50, 4, sensor.bme_ok ? (sensor.pressure - 950.0f) / 100.0f : 0.0f, C_GREEN);
+            drawBar(cx3-25, CY + 110, 50, 4, sensor.bme_ok ? (sensor.pressure - 950.0f) / 100.0f : 0.0f, pressCol);
 
             if (sensor.bme_ok) {
                 uint16_t ac = airQColor(sensor.gas);
@@ -373,28 +416,36 @@ private:
 
         } else {
             // Режим ОФФЛАЙН
-            if (contentDirty) {
-                drawCard(8,   CY + 74, 148, 52, C_CYAN);
-                drawIconTemp(22, CY + 86, C_CYAN);
+            uint16_t tempCol = sensor.bme_ok ? tempColor(sensor.temperature) : C_STROKE;
+            uint16_t humCol = sensor.bme_ok ? humColor(sensor.humidity) : C_STROKE;
+            uint16_t pressCol = sensor.bme_ok ? pressColor(sensor.pressure) : C_STROKE;
+
+            if (contentDirty || tempCol != cache.tempBorderOffline) {
+                cache.tempBorderOffline = tempCol;
+                drawCard(8,   CY + 74, 148, 52, tempCol);
+                drawIconTemp(22, CY + 86, tempCol);
                 drawText(36, CY + 81, 1, C_MUTED, "ROOM TEMP", 100, C_PANEL);
-                
-                drawCard(164, CY + 74, 148, 52, C_CYAN);
-                drawIconHum(178, CY + 86, C_CYAN);
+            }
+            if (contentDirty || humCol != cache.humBorderOffline) {
+                cache.humBorderOffline = humCol;
+                drawCard(164, CY + 74, 148, 52, humCol);
+                drawIconHum(178, CY + 86, humCol);
                 drawText(192, CY + 81, 1, C_MUTED, "HUMIDITY", 100, C_PANEL);
             }
             snprintf(line, sizeof(line), sensor.bme_ok ? "%.1fC" : "--", sensor.temperature);
-            drawText(20, CY + 97, 2, C_TEXT, line, 120, C_PANEL);
+            drawText(20, CY + 97, 2, sensor.bme_ok ? tempCol : C_MUTED, line, 120, C_PANEL);
 
             snprintf(line, sizeof(line), sensor.bme_ok ? "%d%%" : "--", (int)sensor.humidity);
-            drawText(176, CY + 97, 2, C_TEXT, line, 120, C_PANEL);
+            drawText(176, CY + 97, 2, sensor.bme_ok ? humCol : C_MUTED, line, 120, C_PANEL);
 
-            if (contentDirty) {
-                drawCard(8,  CY + 130, 148, 52, C_GREEN);
-                drawIconPress(22, CY + 142, C_GREEN);
+            if (contentDirty || pressCol != cache.pressBorderOffline) {
+                cache.pressBorderOffline = pressCol;
+                drawCard(8,  CY + 130, 148, 52, pressCol);
+                drawIconPress(22, CY + 142, pressCol);
                 drawText(36, CY + 137, 1, C_MUTED, "PRESSURE", 100, C_PANEL);
             }
             snprintf(line, sizeof(line), sensor.bme_ok ? "%.0f hPa" : "--", sensor.pressure);
-            drawText(20, CY + 153, 2, C_TEXT, line, 120, C_PANEL);
+            drawText(20, CY + 153, 2, sensor.bme_ok ? pressCol : C_MUTED, line, 120, C_PANEL);
 
             uint16_t airBorder = sensor.bme_ok ? airQColor(sensor.gas) : C_STROKE;
             if (contentDirty || airBorder != cache.airBorderOffline) {
@@ -521,8 +572,7 @@ private:
                 
                 if (forceRedraw || rc != cache.ramBorder) {
                     cache.ramBorder = rc;
-                    tft->fillRoundRect(8, CY + 108, SW - 16, 36, 5, C_PANEL);
-                    tft->drawRoundRect(8, CY + 108, SW - 16, 36, 5, rc);
+                    drawCard(8, CY + 108, SW - 16, 36, rc);
                     drawIconRAM(24, row3 - 6, rc);
                     drawText(38, row3 - 4, 1, C_MUTED, "RAM", 30, C_PANEL);
                 }
