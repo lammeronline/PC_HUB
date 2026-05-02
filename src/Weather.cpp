@@ -1,5 +1,6 @@
 #include "Weather.h"
 #include "Config.h"
+#include "RuntimeSettings.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -11,6 +12,8 @@ static const char* DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 static float _lat = 0.0f;
 static float _lon = 0.0f;
 static bool _coords_ok = false;
+static const unsigned long WIFI_CONNECT_TIMEOUT_MS = 3000;
+static const unsigned long HTTP_GET_TIMEOUT_MS = 3500;
 
 static String urlEncode(const char* text) {
     String encoded;
@@ -47,11 +50,14 @@ static int weekdayFromDate(const char* isoDate, int fallback) {
 static bool ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return true;
     WiFi.persistent(false);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        attempts++;
+    WiFi.mode(WIFI_STA);
+    String ssid = RuntimeSettings::wifiSsid();
+    String pass = RuntimeSettings::wifiPassword();
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
+        delay(100);
     }
     return WiFi.status() == WL_CONNECTED;
 }
@@ -64,7 +70,7 @@ static String httpsGet(const char* url) {
         Serial.printf("HTTP begin failed: %s\n", url);
         return "";
     }
-    http.setTimeout(8000);
+    http.setTimeout(HTTP_GET_TIMEOUT_MS);
     int code = http.GET();
     if (code != HTTP_CODE_OK) {
         Serial.printf("HTTP error %d: %s\n", code, url);

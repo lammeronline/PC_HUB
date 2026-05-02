@@ -9,6 +9,7 @@
 #include "API.h"
 #include "UI.h"
 #include "PCAgent.h"
+#include "RuntimeSettings.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SensorData  currentData;
@@ -56,6 +57,7 @@ static void bootStatus(TFT_eSPI &t, int x, int y, bool ok,
 
 void setup() {
     Serial.begin(115200);
+    RuntimeSettings::begin();
 
     initLED();
     setLED(0, 0, 255);

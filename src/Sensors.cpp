@@ -1,5 +1,6 @@
 #include "Sensors.h"
 #include "Config.h"
+#include "RuntimeSettings.h"
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME680.h>
@@ -42,7 +43,9 @@ void initSensors() {
 bool syncRTCfromNTP() {
     WiFi.persistent(false);
     WiFi.setHostname(DEVICE_NAME);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    String ssid = RuntimeSettings::wifiSsid();
+    String pass = RuntimeSettings::wifiPassword();
+    WiFi.begin(ssid.c_str(), pass.c_str());
 
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -56,7 +59,8 @@ bool syncRTCfromNTP() {
         return false;
     }
 
-    configTime(NTP_OFFSET, 0, NTP_SERVER);
+    String ntpServer = RuntimeSettings::ntpServer();
+    configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
 
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo, 5000)) {
