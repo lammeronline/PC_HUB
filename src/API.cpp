@@ -2,6 +2,7 @@
 #include "Config.h"
 #include "Logger.h"
 #include "RuntimeSettings.h"
+#include "Backlight.h"
 #include "WebUI.h"
 #include <ArduinoJson.h>
 #include <SD.h>
@@ -243,6 +244,8 @@ static void handleStatus() {
     system["wifi_ssid"]            = RuntimeSettings::wifiSsid();
     system["ntp_server"]           = RuntimeSettings::ntpServer();
     system["ntp_offset_sec"]       = RuntimeSettings::ntpOffsetSec();
+    system["backlight_pct"]        = Backlight::brightness();
+    system["backlight_inverted"]   = RuntimeSettings::backlightInverted();
 
     JsonObject sensor = doc["sensor"].to<JsonObject>();
     sensor["rtc_ok"]      = _sensor->rtc_ok;
@@ -326,6 +329,8 @@ static void handleSettingsGet() {
     doc["wifi_ssid"]      = RuntimeSettings::wifiSsid();
     doc["ntp_server"]     = RuntimeSettings::ntpServer();
     doc["ntp_offset_sec"] = RuntimeSettings::ntpOffsetSec();
+    doc["backlight_pct"]  = Backlight::brightness();
+    doc["backlight_inverted"] = RuntimeSettings::backlightInverted();
     sendJson(doc);
 }
 
@@ -339,6 +344,7 @@ static void handleSettingsPost() {
 
     bool wifiChanged = false;
     bool ntpChanged = false;
+    bool backlightChanged = false;
 
     if (doc["wifi_ssid"].is<const char*>()) {
         String ssid = doc["wifi_ssid"].as<String>();
@@ -360,10 +366,23 @@ static void handleSettingsPost() {
         ntpChanged = true;
     }
 
+    if (doc["backlight_pct"].is<int>()) {
+        int pct = doc["backlight_pct"].as<int>();
+        Backlight::setBrightness((uint8_t)constrain(pct, 0, 100), true);
+        backlightChanged = true;
+    }
+
+    if (doc["backlight_inverted"].is<bool>()) {
+        RuntimeSettings::saveBacklightInverted(doc["backlight_inverted"].as<bool>());
+        Backlight::apply(RuntimeSettings::backlightPercent());
+        backlightChanged = true;
+    }
+
     JsonDocument resp;
     resp["ok"] = true;
     resp["wifi_changed"] = wifiChanged;
     resp["ntp_changed"] = ntpChanged;
+    resp["backlight_changed"] = backlightChanged;
     sendJson(resp);
 
     if (wifiChanged) {

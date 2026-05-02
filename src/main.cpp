@@ -10,6 +10,7 @@
 #include "UI.h"
 #include "PCAgent.h"
 #include "RuntimeSettings.h"
+#include "Backlight.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SensorData  currentData;
@@ -62,9 +63,8 @@ void setup() {
     initLED();
     setLED(0, 0, 255);
 
-    pinMode(TFT_BL_PIN, OUTPUT);
-    digitalWrite(TFT_BL_PIN, HIGH);
     tft.init();
+    Backlight::begin();
     tft.setRotation(1);
     initUI(tft);
 
