@@ -7,6 +7,10 @@ namespace RuntimeSettings {
 static String _wifiSsid = WIFI_SSID;
 static String _wifiPassword = WIFI_PASSWORD;
 static String _ntpServer = NTP_SERVER;
+static String _deviceName = DEVICE_NAME;
+static String _hostname = DEVICE_NAME;
+static String _weatherCity = WEATHER_CITY;
+static bool _windMetric = WIND_UNIT_MS != 0;
 static long _ntpOffsetSec = NTP_OFFSET;
 static uint8_t _backlightPercent = 100;
 static bool _backlightInverted = false;
@@ -23,12 +27,41 @@ static uint8_t clampPercent(int percent) {
     return (uint8_t)percent;
 }
 
+static String cleanLabel(String value, const char *fallback) {
+    value.trim();
+    if (value.length() == 0) return String(fallback);
+    if (value.length() > 31) value = value.substring(0, 31);
+    return value;
+}
+
+static String cleanHostname(String value, const char *fallback) {
+    value.toLowerCase();
+    value.trim();
+    String out;
+    out.reserve(value.length());
+    for (size_t i = 0; i < value.length() && out.length() < 31; i++) {
+        char c = value[i];
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+            out += c;
+        } else if (c == '_' || c == ' ' || c == '.') {
+            out += '-';
+        }
+    }
+    while (out.startsWith("-")) out.remove(0, 1);
+    while (out.endsWith("-")) out.remove(out.length() - 1);
+    return out.length() ? out : String(fallback);
+}
+
 void reload() {
     Preferences prefs;
     prefs.begin("pchub", true);
     _wifiSsid = prefs.getString("wifi_ssid", WIFI_SSID);
     _wifiPassword = prefs.getString("wifi_pass", WIFI_PASSWORD);
     _ntpServer = prefs.getString("ntp_server", NTP_SERVER);
+    _deviceName = cleanLabel(prefs.getString("dev_name", DEVICE_NAME), DEVICE_NAME);
+    _hostname = cleanHostname(prefs.getString("hostname", DEVICE_NAME), DEVICE_NAME);
+    _weatherCity = prefs.getString("weather_city", WEATHER_CITY);
+    _windMetric = prefs.getBool("wind_ms", WIND_UNIT_MS != 0);
     _ntpOffsetSec = clampOffset(prefs.getLong("ntp_offset", NTP_OFFSET));
     _backlightPercent = clampPercent(prefs.getUInt("bl_pct", 100));
     _backlightInverted = prefs.getBool("bl_inv", false);
@@ -49,6 +82,22 @@ String wifiPassword() {
 
 String ntpServer() {
     return _ntpServer;
+}
+
+String deviceName() {
+    return _deviceName;
+}
+
+String hostname() {
+    return _hostname;
+}
+
+String weatherCity() {
+    return _weatherCity;
+}
+
+bool windMetric() {
+    return _windMetric;
 }
 
 long ntpOffsetSec() {
@@ -77,6 +126,38 @@ void saveNtp(const String &server, long offsetSec) {
     prefs.begin("pchub", false);
     if (server.length() > 0) prefs.putString("ntp_server", server);
     prefs.putLong("ntp_offset", clampOffset(offsetSec));
+    prefs.end();
+    reload();
+}
+
+void saveDeviceIdentity(const String &deviceName, const String &hostname) {
+    String cleanName = cleanLabel(deviceName, DEVICE_NAME);
+    String cleanHost = cleanHostname(hostname, DEVICE_NAME);
+
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putString("dev_name", cleanName);
+    prefs.putString("hostname", cleanHost);
+    prefs.end();
+    reload();
+}
+
+void saveWeatherCity(const String &city) {
+    String clean = city;
+    clean.trim();
+    if (clean.length() == 0) return;
+
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putString("weather_city", clean);
+    prefs.end();
+    reload();
+}
+
+void saveWindMetric(bool metric) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("wind_ms", metric);
     prefs.end();
     reload();
 }

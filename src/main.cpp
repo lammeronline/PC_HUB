@@ -23,6 +23,7 @@ static const unsigned long DATA_LOG_INTERVAL_MS = DATA_LOG_INTERVAL_SEC * 1000UL
 static unsigned long lastWeatherUpdate = 0;
 static unsigned long lastLogWrite = 0;
 static unsigned long lastSensorUpdate = 0;
+static String activeWeatherCity;
 static bool sdReady = false;
 static uint64_t sdSizeMb = 0;
 
@@ -131,8 +132,9 @@ void setup() {
     bootLabel(tft, LX, y, "Geocoding", BG, MUTED);
     tft.setTextFont(2); tft.setTextColor(AMBER, BG);
     tft.setTextPadding(92); tft.drawString("...", SX, y); tft.setTextPadding(0);
-    bool geo_ok = geocodeCity(WEATHER_CITY);
-    bootStatus(tft, SX, y, geo_ok, BG, geo_ok ? WEATHER_CITY : nullptr);
+    activeWeatherCity = RuntimeSettings::weatherCity();
+    bool geo_ok = geocodeCity(activeWeatherCity.c_str());
+    bootStatus(tft, SX, y, geo_ok, BG, geo_ok ? activeWeatherCity.c_str() : nullptr);
     y += ROW;
 
     // Weather fetch (slow)
@@ -185,6 +187,18 @@ void loop() {
     if (now - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL_MS) {
         fetchWeather(weatherData);
         invalidateForecastUI();
+        lastWeatherUpdate = now;
+    }
+
+    String weatherCity = RuntimeSettings::weatherCity();
+    if (weatherCity != activeWeatherCity) {
+        activeWeatherCity = weatherCity;
+        if (geocodeCity(activeWeatherCity.c_str())) {
+            fetchWeather(weatherData);
+        } else {
+            weatherData.ok = false;
+        }
+        invalidateUI();
         lastWeatherUpdate = now;
     }
 

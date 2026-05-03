@@ -42,7 +42,8 @@ void initSensors() {
 
 bool syncRTCfromNTP() {
     WiFi.persistent(false);
-    WiFi.setHostname(DEVICE_NAME);
+    String hostname = RuntimeSettings::hostname();
+    WiFi.setHostname(hostname.c_str());
     String ssid = RuntimeSettings::wifiSsid();
     String pass = RuntimeSettings::wifiPassword();
     WiFi.begin(ssid.c_str(), pass.c_str());

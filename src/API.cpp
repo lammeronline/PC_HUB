@@ -19,6 +19,11 @@ static PCData            *_pcData  = nullptr;
 static bool               _apiReady = false;
 static bool               _sdReady  = false;
 
+static float weatherWindForApi() {
+    if (!_weather) return 0.0f;
+    return RuntimeSettings::windMetric() ? (_weather->wind_speed / 3.6f) : _weather->wind_speed;
+}
+
 struct HistoryPoint {
     uint32_t ts = 0;
     float temperature = 0.0f;
@@ -223,10 +228,10 @@ static void handleStatus() {
 
     JsonDocument doc;
     doc["ok"]           = true;
-    doc["device"]       = DEVICE_NAME;
+    doc["device"]       = RuntimeSettings::deviceName();
     doc["ip"]           = WiFi.localIP().toString();
-    doc["hostname"]     = DEVICE_NAME ".local";
-    doc["wind_unit"]    = WIND_UNIT_MS ? "m/s" : "km/h";
+    doc["hostname"]     = RuntimeSettings::hostname() + ".local";
+    doc["wind_unit"]    = RuntimeSettings::windMetric() ? "m/s" : "km/h";
     doc["log_path"]     = readingsLogPath();
     doc["logger_ready"] = loggerReady();
 
@@ -235,7 +240,7 @@ static void handleStatus() {
     system["api_ready"]            = _apiReady;
     system["heap_free"]            = ESP.getFreeHeap();
     system["uptime_sec"]           = millis() / 1000UL;
-    system["weather_city"]         = WEATHER_CITY;
+    system["weather_city"]         = RuntimeSettings::weatherCity();
     system["weather_interval_sec"] = WEATHER_UPDATE_INTERVAL_SEC;
     system["log_interval_sec"]     = DATA_LOG_INTERVAL_SEC;
     system["hist24_rev"]           = _hist24Rev;
@@ -260,10 +265,7 @@ static void handleStatus() {
     sensor["gas"]         = _sensor->gas;
 
     JsonObject weather = doc["weather"].to<JsonObject>();
-    float apiWindSpeed = _weather->wind_speed;
-#if WIND_UNIT_MS
-    apiWindSpeed /= 3.6f;
-#endif
+    float apiWindSpeed = weatherWindForApi();
     weather["ok"]           = _weather->ok;
     weather["temperature"]  = _weather->temperature;
     weather["humidity"]     = _weather->humidity;
@@ -331,6 +333,10 @@ static void handleSettingsGet() {
     JsonDocument doc;
     doc["ok"]             = true;
     doc["wifi_ssid"]      = RuntimeSettings::wifiSsid();
+    doc["device"]         = RuntimeSettings::deviceName();
+    doc["hostname"]       = RuntimeSettings::hostname();
+    doc["weather_city"]   = RuntimeSettings::weatherCity();
+    doc["wind_unit"]      = RuntimeSettings::windMetric() ? "m/s" : "km/h";
     doc["ntp_server"]     = RuntimeSettings::ntpServer();
     doc["ntp_offset_sec"] = RuntimeSettings::ntpOffsetSec();
     doc["backlight_pct"]  = Backlight::brightness();
@@ -348,6 +354,9 @@ static void handleSettingsPost() {
 
     bool wifiChanged = false;
     bool ntpChanged = false;
+    bool deviceChanged = false;
+    bool weatherChanged = false;
+    bool windChanged = false;
     bool backlightChanged = false;
 
     if (doc["wifi_ssid"].is<const char*>()) {
@@ -370,6 +379,35 @@ static void handleSettingsPost() {
         ntpChanged = true;
     }
 
+    if (doc["device"].is<const char*>() || doc["hostname"].is<const char*>()) {
+        String deviceName = doc["device"] | RuntimeSettings::deviceName();
+        String hostname = doc["hostname"] | RuntimeSettings::hostname();
+        RuntimeSettings::saveDeviceIdentity(deviceName, hostname);
+        String appliedHostname = RuntimeSettings::hostname();
+        WiFi.setHostname(appliedHostname.c_str());
+        MDNS.end();
+        MDNS.begin(appliedHostname.c_str());
+        MDNS.addService("http", "tcp", 80);
+        deviceChanged = true;
+    }
+
+    if (doc["weather_city"].is<const char*>()) {
+        String city = doc["weather_city"].as<String>();
+        city.trim();
+        if (city.length() > 0) {
+            RuntimeSettings::saveWeatherCity(city);
+            weatherChanged = true;
+        }
+    }
+
+    if (doc["wind_unit"].is<const char*>()) {
+        String unit = doc["wind_unit"].as<String>();
+        unit.trim();
+        unit.toLowerCase();
+        RuntimeSettings::saveWindMetric(unit == "m/s" || unit == "ms");
+        windChanged = true;
+    }
+
     if (doc["backlight_pct"].is<int>()) {
         int pct = doc["backlight_pct"].as<int>();
         Backlight::setBrightness((uint8_t)constrain(pct, 0, 100), true);
@@ -386,6 +424,9 @@ static void handleSettingsPost() {
     resp["ok"] = true;
     resp["wifi_changed"] = wifiChanged;
     resp["ntp_changed"] = ntpChanged;
+    resp["device_changed"] = deviceChanged;
+    resp["weather_changed"] = weatherChanged;
+    resp["wind_changed"] = windChanged;
     resp["backlight_changed"] = backlightChanged;
     sendJson(resp);
 
@@ -624,14 +665,15 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
         server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
     });
 
-    MDNS.begin(DEVICE_NAME);
+    String hostname = RuntimeSettings::hostname();
+    MDNS.begin(hostname.c_str());
     MDNS.addService("http", "tcp", 80);
 
     server.begin();
     _apiReady = true;
 
     Serial.printf("API: OK http://%s.local/  (%s)\n",
-                  DEVICE_NAME, WiFi.localIP().toString().c_str());
+                  hostname.c_str(), WiFi.localIP().toString().c_str());
 }
 
 void handleAPI() {

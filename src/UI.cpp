@@ -2,6 +2,7 @@
 #include "API.h"
 #include "Config.h"
 #include "Logger.h"
+#include "RuntimeSettings.h"
 #include <WiFi.h>
 
 // ── Константы Layout'а и Цветов ──────────────────────────────────────────────
@@ -164,11 +165,8 @@ private:
     }
 
     void fmtWindSpeed(char *buf, size_t sz, float kmh) {
-#if WIND_UNIT_MS
-        snprintf(buf, sz, "%.1f m/s", kmh / 3.6f);
-#else
-        snprintf(buf, sz, "%.1f km/h", kmh);
-#endif
+        if (RuntimeSettings::windMetric()) snprintf(buf, sz, "%.1f m/s", kmh / 3.6f);
+        else snprintf(buf, sz, "%.1f km/h", kmh);
     }
 
     void drawSun(int cx, int cy, int R) {
@@ -297,10 +295,11 @@ private:
             tft->fillRect(208, CY + 3, 102, 2, C_BLUE);
 
             tft->setTextPadding(0); // сброс унаследованного padding от часов
-            tft->setTextFont(1);
+            tft->setTextFont(2);
             tft->setTextColor(C_MUTED, C_PANEL);
             tft->setTextDatum(MC_DATUM);
-            tft->drawString(WEATHER_CITY, 255, CY + 12);
+            String city = RuntimeSettings::weatherCity();
+            tft->drawString(city.c_str(), 255, CY + 14);
 
             tft->setTextFont(4);
             tft->setTextColor(C_AMBER, C_PANEL);
@@ -323,18 +322,18 @@ private:
         }
 
         // Скорость ветра — всегда, но ПЕРЕД иконкой чтобы не срезать лучи
-        tft->setTextDatum(ML_DATUM);
-        tft->setTextPadding(84);
+        tft->setTextDatum(MR_DATUM);
+        tft->setTextPadding(48);
         if (weather.ok) fmtWindSpeed(line, sizeof(line), weather.wind_speed);
         else            snprintf(line, sizeof(line), "--");
         tft->setTextFont(2);
         tft->setTextColor(C_CYAN, C_PANEL);
-        tft->drawString(line, 220, CY + 53);
+        tft->drawString(line, 272, CY + 53);
         tft->setTextPadding(0);
         tft->setTextDatum(TL_DATUM);
 
         // Иконка каждый кадр — поверх фона текста скорости ветра
-        drawWeatherIcon(SW - 28, CY + 34, currentCode, currentIsDay, 10);
+        drawWeatherIcon(SW - 29, CY + 40, currentCode, currentIsDay, 10);
 
         // 2. Блок ПОКАЗАНИЙ
         if (pcOn) {
@@ -650,7 +649,8 @@ private:
             drawText(20,  CY + 103, 2, C_AMBER, "/api/status", 130, C_PANEL);
             drawText(164, CY + 103, 2, C_AMBER, "/api/log",    118, C_PANEL);
 
-            snprintf(tLine, sizeof(tLine), "http://" DEVICE_NAME ".local/   %s", WiFi.localIP().toString().c_str());
+            String hostname = RuntimeSettings::hostname();
+            snprintf(tLine, sizeof(tLine), "http://%s.local/   %s", hostname.c_str(), WiFi.localIP().toString().c_str());
             drawText(20, CY + 146, 1, C_MUTED, tLine, 270, C_PANEL);
         }
     }
@@ -704,7 +704,8 @@ private:
         }
 
         if (WiFi.status() == WL_CONNECTED) {
-            snprintf(line, sizeof(line), DEVICE_NAME ".local    %s", WiFi.localIP().toString().c_str());
+            String hostname = RuntimeSettings::hostname();
+            snprintf(line, sizeof(line), "%s.local    %s", hostname.c_str(), WiFi.localIP().toString().c_str());
             drawText(64, CY + 89, 2, C_CYAN, line, 238, C_PANEL);
         } else {
             drawText(64, CY + 89, 2, C_RED, "OFFLINE", 238, C_PANEL);
@@ -716,7 +717,7 @@ private:
         drawText(20, CY + 142, 1, C_MUTED, line, 270, C_PANEL);
 
         snprintf(line, sizeof(line), "Weather %us    Log %us    Wind %s",
-                 WEATHER_UPDATE_INTERVAL_SEC, DATA_LOG_INTERVAL_SEC, WIND_UNIT_MS ? "m/s" : "km/h");
+                 WEATHER_UPDATE_INTERVAL_SEC, DATA_LOG_INTERVAL_SEC, RuntimeSettings::windMetric() ? "m/s" : "km/h");
         drawText(20, CY + 155, 1, C_MUTED, line, 270, C_PANEL);
     }
 

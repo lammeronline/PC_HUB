@@ -51,6 +51,8 @@ static bool ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return true;
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    String hostname = RuntimeSettings::hostname();
+    WiFi.setHostname(hostname.c_str());
     String ssid = RuntimeSettings::wifiSsid();
     String pass = RuntimeSettings::wifiPassword();
     WiFi.begin(ssid.c_str(), pass.c_str());
