@@ -124,7 +124,7 @@ bool fetchWeather(WeatherData &data) {
     snprintf(url, sizeof(url),
              "https://api.open-meteo.com/v1/forecast"
              "?latitude=%.4f&longitude=%.4f"
-             "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m"
+             "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
              "&daily=temperature_2m_max,temperature_2m_min,weather_code"
              "&timezone=auto&forecast_days=7",
              _lat, _lon);
@@ -137,6 +137,7 @@ bool fetchWeather(WeatherData &data) {
     filter["current"]["relative_humidity_2m"] = true;
     filter["current"]["weather_code"]         = true;
     filter["current"]["wind_speed_10m"]       = true;
+    filter["current"]["is_day"]               = true;
     filter["daily"]["time"]                   = true;
     filter["daily"]["temperature_2m_max"]     = true;
     filter["daily"]["temperature_2m_min"]     = true;
@@ -169,6 +170,7 @@ bool fetchWeather(WeatherData &data) {
     data.humidity     = cur["relative_humidity_2m"].as<int>();
     data.weather_code = cur["weather_code"].as<int>();
     data.wind_speed   = cur["wind_speed_10m"].as<float>();
+    data.is_day       = cur["is_day"].as<int>() != 0;
 
     struct tm timeinfo;
     int baseDay = getLocalTime(&timeinfo, 1000) ? timeinfo.tm_wday : 0;

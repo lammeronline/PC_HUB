@@ -47,6 +47,7 @@ private:
     struct StateCache {
         bool pcOn = false;
         int weatherCode = -999;
+        bool weatherIsDay = true;
         float weatherTemp = -999.0f; // Добавлен кеш температуры погоды
         uint16_t airBorderNow = 0xFFFF;
         uint16_t airBorderOffline = 0xFFFF;
@@ -170,18 +171,32 @@ private:
 #endif
     }
 
-    void drawWeatherIcon(int cx, int cy, int code, int R = 9) {
+    void drawSun(int cx, int cy, int R) {
+        tft->fillCircle(cx, cy, R - 2, C_AMBER);
+        const float dx[] = {1.0f, 0.707f, 0.0f, -0.707f, -1.0f, -0.707f, 0.0f, 0.707f};
+        const float dy[] = {0.0f, 0.707f, 1.0f, 0.707f, 0.0f, -0.707f, -1.0f, -0.707f};
+        for (int i = 0; i < 8; i++) {
+            tft->drawLine(cx + (int)(R*dx[i]), cy + (int)(R*dy[i]), cx + (int)((R+R/2)*dx[i]), cy + (int)((R+R/2)*dy[i]), C_AMBER);
+        }
+    }
+
+    void drawMoon(int cx, int cy, int R) {
+        tft->fillCircle(cx, cy, R - 2, C_TEXT);
+        tft->fillCircle(cx + R / 3, cy - R / 4, R - 2, C_PANEL);
+    }
+
+    void drawWeatherIcon(int cx, int cy, int code, bool isDay, int R = 9) {
+        tft->fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4, C_PANEL);
         if (code < 0) { tft->drawLine(cx - R/2, cy, cx + R/2, cy, C_MUTED); return; }
         if (code == 0) {
-            tft->fillCircle(cx, cy, R - 2, C_AMBER);
-            const float dx[] = {1.0f, 0.707f, 0.0f, -0.707f, -1.0f, -0.707f, 0.0f, 0.707f};
-            const float dy[] = {0.0f, 0.707f, 1.0f, 0.707f, 0.0f, -0.707f, -1.0f, -0.707f};
-            for (int i = 0; i < 8; i++) {
-                tft->drawLine(cx + (int)(R*dx[i]), cy + (int)(R*dy[i]), cx + (int)((R+R/2)*dx[i]), cy + (int)((R+R/2)*dy[i]), C_AMBER);
-            }
+            if (isDay) drawSun(cx, cy, R);
+            else       drawMoon(cx, cy, R);
             return;
         }
-        if (code <= 2) tft->fillCircle(cx - R/2, cy - R/3, R/2 + 1, C_AMBER);
+        if (code <= 2) {
+            if (isDay) drawSun(cx - R/2, cy - R/3, R/2 + 3);
+            else       drawMoon(cx - R/2, cy - R/3, R/2 + 3);
+        }
         int cR1 = R * 2 / 3, cR2 = R * 5 / 9, cOff = R / 3;
         auto cloud = [&](int bx, int by) {
             tft->fillCircle(bx - cOff, by, cR1, C_MUTED);
@@ -267,10 +282,14 @@ private:
         tft->drawString(sensor.timeStr + 12, CLOCK_CX, CY + 40); 
         
         int currentCode = weather.ok ? weather.weather_code : -1;
-        bool weatherUpdated = contentDirty || currentCode != cache.weatherCode || weather.temperature != cache.weatherTemp;
+        bool currentIsDay = weather.ok ? weather.is_day : true;
+        bool weatherUpdated = contentDirty || currentCode != cache.weatherCode ||
+                              currentIsDay != cache.weatherIsDay ||
+                              weather.temperature != cache.weatherTemp;
         if (weatherUpdated) {
             cache.weatherCode = currentCode;
             cache.weatherTemp = weather.temperature;
+            cache.weatherIsDay = currentIsDay;
 
             tft->fillRoundRect(206, CY + 2, 106, 64, 7, C_PANEL);
             tft->drawRoundRect(8, CY + 2, SW - 16, 64, 7, C_STROKE);
@@ -290,18 +309,14 @@ private:
 
             if (weather.ok) {
                 char tNum[16];
-                snprintf(tNum, sizeof(tNum), "%.0f", weather.temperature);
-                const int tempRight = SW - 78;
+                snprintf(tNum, sizeof(tNum), "%+.0f", weather.temperature);
+                const int tempRight = SW - 62;
                 tft->drawString(tNum, tempRight, CY + 37);
 
                 int circX = tempRight + 4;
                 int circY = CY + 29;
                 tft->drawCircle(circX, circY, 3, C_AMBER);
                 tft->drawCircle(circX, circY, 2, C_AMBER);
-
-                tft->setTextDatum(ML_DATUM);
-                tft->drawString("C", circX + 6, CY + 37);
-                tft->setTextDatum(MR_DATUM);
             } else {
                 tft->drawString("--", SW - 84, CY + 37);
             }
@@ -319,7 +334,7 @@ private:
         tft->setTextDatum(TL_DATUM);
 
         // Иконка каждый кадр — поверх фона текста скорости ветра
-        drawWeatherIcon(SW - 28, CY + 34, currentCode, 10);
+        drawWeatherIcon(SW - 28, CY + 34, currentCode, currentIsDay, 10);
 
         // 2. Блок ПОКАЗАНИЙ
         if (pcOn) {

@@ -14,6 +14,7 @@ struct WeatherData {
     int   humidity = 0;
     float wind_speed = 0.0f;
     int   weather_code = -1;
+    bool  is_day = true;
     DayForecast forecast[7];
 };
 

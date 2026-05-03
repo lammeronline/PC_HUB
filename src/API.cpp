@@ -269,6 +269,7 @@ static void handleStatus() {
     weather["humidity"]     = _weather->humidity;
     weather["wind_speed"]   = apiWindSpeed;
     weather["weather_code"] = _weather->weather_code;
+    weather["is_day"]       = _weather->is_day;
 
     JsonArray forecast = weather["forecast"].to<JsonArray>();
     for (int i = 0; i < 7; i++) {
