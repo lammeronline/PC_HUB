@@ -61,6 +61,7 @@ private:
         bool monitPcWas = false;
         uint16_t hwBorder = 0xFFFF;
         uint16_t wfBorder = 0xFFFF;
+        uint8_t sysFlags = 0xFF;
     } cache;
 
     // ── Примитивы отрисовки ──────────────────────────────────────────────────
@@ -223,9 +224,16 @@ private:
             tft->fillRect(0, 0, tft->width(), TASKBAR_H, bg);
             tft->fillRect(0, TASKBAR_H - 1, tft->width(), 1, C_STROKE);
         }
-        char dateLine[32];
-        snprintf(dateLine, sizeof(dateLine), "%s  %.10s", sensor.rtc_ok ? DOW_NAMES[sensor.weekday % 7] : "--", sensor.timeStr);
-        drawText(8, 5, 2, C_MUTED, dateLine, 170, C_HEADER);
+        char dateLine[40];
+        if (currentTab == TAB_NOW) {
+            snprintf(dateLine, sizeof(dateLine), "%s  %.10s", sensor.rtc_ok ? DOW_NAMES[sensor.weekday % 7] : "--", sensor.timeStr);
+        } else {
+            snprintf(dateLine, sizeof(dateLine), "%s  %.10s  %.5s",
+                     sensor.rtc_ok ? DOW_NAMES[sensor.weekday % 7] : "--",
+                     sensor.timeStr,
+                     sensor.timeStr + 12);
+        }
+        drawText(8, 5, 2, C_MUTED, dateLine, 220, C_HEADER);
         bool wifiOk = (WiFi.status() == WL_CONNECTED);
         int right = tft->width();
         drawStatusIcon(right - 74, 4,  wifiOk ? C_GREEN : C_RED, 0);
@@ -517,7 +525,10 @@ private:
         const int SW = tft->width();
         
         tft->fillRect(0, CY, SW, CONTENT_H, C_BG);
-        drawText(10, CY + 4, 2, C_TEXT, "7-DAY FORECAST", 200);
+        char title[48];
+        String city = RuntimeSettings::weatherCity();
+        snprintf(title, sizeof(title), "%.24s 7 days forecast", city.c_str());
+        drawText(10, CY + 4, 2, C_TEXT, title, SW - 20);
 
         if (!weather.ok) {
             drawCard(8, CY + 32, SW - 16, 54, C_RED);
@@ -534,19 +545,24 @@ private:
             int y = ROW_Y + i * ROW_H;
             const DayForecast &d = weather.forecast[i];
             bool today = (i == 0);
-            drawCard(8, y, SW - 16, ROW_H - 2, today ? C_AMBER : C_STROKE);
-            drawText(18,  y + 4, 1, today ? C_AMBER : C_CYAN, today ? "TODAY" : d.day, 42, C_PANEL);
-            snprintf(line, sizeof(line), "%+.0f / %+.0f", d.temp_min, d.temp_max);
-            drawText(72,  y + 4, 1, C_TEXT,  line, 86, C_PANEL);
-            drawText(164, y + 4, 1, C_MUTED, weatherDesc(d.weather_code), 130, C_PANEL);
+            drawCard(8, y, SW - 16, ROW_H - 2, C_STROKE);
+            drawText(18, y + 4, 1, today ? C_AMBER : C_CYAN, d.date, 38, C_PANEL);
+            drawText(58, y + 4, 1, today ? C_AMBER : C_CYAN, d.day, 24, C_PANEL);
+            snprintf(line, sizeof(line), "%+.0f/%+.0f", d.temp_max, d.temp_min);
+            drawText(86, y + 4, 1, C_TEXT, line, 52, C_PANEL);
+            drawWeatherIcon(148, y + 10, d.weather_code, true, 4);
+            drawText(166, y + 4, 1, C_MUTED, weatherDesc(d.weather_code), 62, C_PANEL);
+            fmtWindSpeed(line, sizeof(line), d.wind_speed);
+            drawText(232, y + 4, 1, C_CYAN, line, 70, C_PANEL);
         }
         forecastDirty = false;
     }
 
-    void drawMonitTab(const UiStatus &status) {
+    void drawMonitTab(const SensorData &sensor, const WeatherData &weather, const UiStatus &status) {
         const int CY = CONTENT_Y;
         const int SW = tft->width();
         char tLine[16], lLine[16], eLine[16];
+        char line[64];
 
         bool pc = _pc && pcFresh(*_pc);
         bool forceRedraw = contentDirty;
@@ -636,22 +652,59 @@ private:
         } else {
             unsigned long ageSec = status.lastLogWriteMs ? (millis() - status.lastLogWriteMs) / 1000UL : 0;
             if (forceRedraw) {
-                drawText(10, CY + 4, 2, C_TEXT, "DATA LOG", 200);
-                drawCard(8,  CY + 26,  SW - 16, 54, loggerReady() ? C_GREEN : C_RED);
-                drawCard(8,  CY + 86,  SW - 16, 46, C_BLUE);
-                drawCard(8,  CY + 138, SW - 16, 36, C_STROKE);
-                drawText(20, CY + 91, 1, C_MUTED, "API ENDPOINTS", 100, C_PANEL);
+                drawText(10, CY + 4, 2, C_TEXT, "LOCAL MONITOR", 170);
+                drawText(232, CY + 8, 1, C_AMBER, "PC AGENT OFF", 76);
+
+                drawCard(8, CY + 26, 148, 58, sensor.bme_ok ? C_CYAN : C_RED);
+                drawIconTemp(24, CY + 38, C_CYAN);
+                drawText(38, CY + 34, 1, C_MUTED, "ROOM", 80, C_PANEL);
+
+                drawCard(164, CY + 26, 148, 58, weather.ok ? C_AMBER : C_RED);
+                drawText(176, CY + 34, 1, C_MUTED, "OUTDOOR", 76, C_PANEL);
+
+                drawCard(8, CY + 92, 148, 44, sensor.bme_ok ? C_GREEN : C_RED);
+                drawIconPress(24, CY + 101, C_GREEN);
+                drawText(38, CY + 99, 1, C_MUTED, "AIR", 60, C_PANEL);
+
+                drawCard(164, CY + 92, 148, 44, loggerReady() ? C_GREEN : C_RED);
+                drawText(176, CY + 99, 1, C_MUTED, "LOGGER", 70, C_PANEL);
+
+                drawCard(8, CY + 144, SW - 16, 34, C_STROKE);
             }
-            drawText(20, CY + 34, 2, C_CYAN, readingsLogPath(), 270, C_PANEL);
-            snprintf(tLine, sizeof(tLine), "Every %us  Last: %lus ago", DATA_LOG_INTERVAL_SEC, ageSec);
-            drawText(20, CY + 55, 1, loggerReady() ? C_GREEN : C_RED, tLine, 270, C_PANEL);
 
-            drawText(20,  CY + 103, 2, C_AMBER, "/api/status", 130, C_PANEL);
-            drawText(164, CY + 103, 2, C_AMBER, "/api/log",    118, C_PANEL);
+            if (sensor.bme_ok) {
+                snprintf(line, sizeof(line), "%+.1fC  %d%%", sensor.temperature, (int)sensor.humidity);
+                drawText(20, CY + 56, 2, tempColor(sensor.temperature), line, 126, C_PANEL);
+            } else {
+                drawText(20, CY + 56, 2, C_RED, "NO SENSOR", 126, C_PANEL);
+            }
 
-            String hostname = RuntimeSettings::hostname();
-            snprintf(tLine, sizeof(tLine), "http://%s.local/   %s", hostname.c_str(), WiFi.localIP().toString().c_str());
-            drawText(20, CY + 146, 1, C_MUTED, tLine, 270, C_PANEL);
+            if (weather.ok) {
+                snprintf(line, sizeof(line), "%+.0fC %s", weather.temperature, weatherDesc(weather.weather_code));
+                drawText(176, CY + 50, 1, C_TEXT, line, 84, C_PANEL);
+                fmtWindSpeed(line, sizeof(line), weather.wind_speed);
+                drawText(176, CY + 65, 1, C_CYAN, line, 84, C_PANEL);
+                drawWeatherIcon(292, CY + 58, weather.weather_code, weather.is_day, 8);
+            } else {
+                drawText(176, CY + 56, 2, C_RED, "NO DATA", 84, C_PANEL);
+            }
+
+            if (sensor.bme_ok) {
+                snprintf(line, sizeof(line), "%.0f hPa", sensor.pressure);
+                drawText(20, CY + 116, 1, C_TEXT, line, 78, C_PANEL);
+                snprintf(line, sizeof(line), "%.0f kOhm", sensor.gas);
+                drawText(98, CY + 116, 1, airQColor(sensor.gas), line, 48, C_PANEL);
+            } else {
+                drawText(20, CY + 116, 1, C_RED, "OFFLINE", 126, C_PANEL);
+            }
+
+            snprintf(line, sizeof(line), loggerReady() ? "OK  %lus ago" : "ERROR", ageSec);
+            drawText(176, CY + 116, 1, loggerReady() ? C_GREEN : C_RED, line, 126, C_PANEL);
+
+            unsigned long pcAge = (_pc && _pc->lastMs) ? (millis() - _pc->lastMs) / 1000UL : 0;
+            if (pcAge > 0) snprintf(line, sizeof(line), "CPU/GPU paused  Last PC: %lus ago", pcAge);
+            else snprintf(line, sizeof(line), "Start PC Agent to show CPU/GPU/RAM");
+            drawText(20, CY + 154, 1, C_MUTED, line, 274, C_PANEL);
         }
     }
 
@@ -659,66 +712,102 @@ private:
         const int CY = CONTENT_Y;
         const int SW = tft->width();
         char line[96];
+        const bool wifiOk = WiFi.status() == WL_CONNECTED;
+        const bool sdOk = status.sdReady;
+        const bool logOk = loggerReady();
+        const bool sensorsOk = sensor.rtc_ok && sensor.bme_ok;
+        const uint8_t sysFlags = (sensor.rtc_ok ? 0x01 : 0) |
+                                 (sensor.bme_ok ? 0x02 : 0) |
+                                 (sdOk ? 0x04 : 0) |
+                                 (wifiOk ? 0x08 : 0) |
+                                 (logOk ? 0x10 : 0);
+        const bool layoutDirty = contentDirty || sysFlags != cache.sysFlags;
+        cache.sysFlags = sysFlags;
 
-        if (contentDirty) {
-            drawText(10, CY + 4, 2, C_TEXT, "SYSTEM", 200);
-            drawCard(8, CY + 134, SW - 16, 44, C_STROKE);
-        }
+        auto okColor = [](bool ok) -> uint16_t { return ok ? C_GREEN : C_RED; };
 
-        uint16_t hwBorder = (sensor.rtc_ok && sensor.bme_ok && status.sdReady) ? C_GREEN : C_RED;
-        if (contentDirty || hwBorder != cache.hwBorder) {
-            cache.hwBorder = hwBorder;
-            drawCard(8, CY + 28, SW - 16, 50, hwBorder);
-            drawText(20, CY + 36, 1, C_MUTED, "RTC",    46, C_PANEL);
-            drawText(20, CY + 46, 1, C_MUTED, "BME680", 46, C_PANEL);
-            drawText(20, CY + 56, 1, C_MUTED, "SD",     46, C_PANEL);
+        auto drawPill = [&](int x, int y, const char* label, bool ok) {
+            const uint16_t col = okColor(ok);
+            tft->fillRoundRect(x, y, 70, 18, 6, C_PANEL);
+            tft->drawRoundRect(x, y, 70, 18, 6, C_STROKE);
+            tft->fillCircle(x + 9, y + 9, 3, col);
+            drawText(x + 18, y + 5, 1, C_TEXT, label, 31, C_PANEL);
+            drawText(x + 50, y + 5, 1, col, ok ? "OK" : "ERR", 18, C_PANEL);
+        };
+
+        auto drawSection = [&](int x, int y, int w, int h, uint16_t col, const char* title) {
+            drawCard(x, y, w, h, col);
+            drawText(x + 10, y + 7, 1, col, title, w - 18, C_PANEL);
+        };
+
+        auto drawRow = [&](int x, int y, const char* label, const char* value, uint16_t col = C_TEXT) {
+            drawText(x, y, 1, C_MUTED, label, 48, C_PANEL);
+            drawText(x + 50, y, 1, col, value, 88, C_PANEL);
+        };
+
+        if (layoutDirty) {
+            tft->fillRect(0, CY, SW, CONTENT_H, C_BG);
+            drawText(10, CY + 4, 2, C_TEXT, "SYSTEM STATUS", 180);
+            drawPill(8,   CY + 26, "RTC",  sensor.rtc_ok);
+            drawPill(84,  CY + 26, "BME",  sensor.bme_ok);
+            drawPill(160, CY + 26, "SD",   sdOk);
+            drawPill(236, CY + 26, "WIFI", wifiOk);
+            drawSection(8, CY + 50, 148, 58, sensorsOk ? C_GREEN : C_RED, "SENSORS");
+            drawSection(164, CY + 50, 148, 58, (sdOk && logOk) ? C_GREEN : C_RED, "STORAGE");
+            drawSection(8, CY + 116, 148, 62, wifiOk ? C_CYAN : C_RED, "WIFI");
+            drawSection(164, CY + 116, 148, 62, C_AMBER, "ESP32");
         }
 
         if (sensor.rtc_ok) {
-            snprintf(line, sizeof(line), "%s  %.10s", DOW_NAMES[sensor.weekday % 7], sensor.timeStr);
-            drawText(70, CY + 36, 1, C_GREEN, line, 230, C_PANEL);
+            snprintf(line, sizeof(line), "%s %.5s", DOW_NAMES[sensor.weekday % 7], sensor.timeStr + 12);
+            drawRow(18, CY + 69, "RTC", line, C_GREEN);
         } else {
-            drawText(70, CY + 36, 1, C_RED, "OFFLINE", 230, C_PANEL);
+            drawRow(18, CY + 69, "RTC", "OFFLINE", C_RED);
         }
-
         if (sensor.bme_ok) {
-            snprintf(line, sizeof(line), "%+.1fC  %d%%  %.0f hPa  %.0f kOhm",
-                     sensor.temperature, (int)sensor.humidity, sensor.pressure, sensor.gas);
-            drawText(70, CY + 46, 1, C_GREEN, line, 230, C_PANEL);
+            snprintf(line, sizeof(line), "%+.1fC  %d%%", sensor.temperature, (int)sensor.humidity);
+            drawRow(18, CY + 82, "BME", line, C_GREEN);
+            snprintf(line, sizeof(line), "%.0fhPa %.0fk", sensor.pressure, sensor.gas);
+            drawRow(18, CY + 95, "AIR", line, C_MUTED);
         } else {
-            drawText(70, CY + 46, 1, C_RED, "OFFLINE", 230, C_PANEL);
+            drawRow(18, CY + 82, "BME", "OFFLINE", C_RED);
+            drawRow(18, CY + 95, "AIR", "--", C_MUTED);
         }
 
-        if (status.sdReady) {
-            snprintf(line, sizeof(line), "%s   %llu MB", readingsLogPath(), status.sdSizeMb);
-            drawText(70, CY + 56, 1, C_GREEN, line, 230, C_PANEL);
+        if (sdOk) {
+            snprintf(line, sizeof(line), "%llu MB", status.sdSizeMb);
+            drawRow(174, CY + 69, "CARD", line, C_GREEN);
         } else {
-            drawText(70, CY + 56, 1, C_RED, "OFFLINE", 230, C_PANEL);
+            drawRow(174, CY + 69, "CARD", "OFFLINE", C_RED);
+        }
+        drawRow(174, CY + 82, "LOG", logOk ? "READY" : "ERROR", okColor(logOk));
+        if (status.lastLogWriteMs) {
+            snprintf(line, sizeof(line), "%lus ago", (millis() - status.lastLogWriteMs) / 1000UL);
+            drawRow(174, CY + 95, "LAST", line, C_MUTED);
+        } else {
+            drawRow(174, CY + 95, "LAST", "--", C_MUTED);
         }
 
-        uint16_t wfBorder = WiFi.status() == WL_CONNECTED ? C_CYAN : C_RED;
-        if (contentDirty || wfBorder != cache.wfBorder) {
-            cache.wfBorder = wfBorder;
-            drawCard(8, CY + 84, SW - 16, 44, wfBorder);
-            drawText(20, CY + 91, 1, C_MUTED, "WIFI", 40, C_PANEL);
-        }
-
-        if (WiFi.status() == WL_CONNECTED) {
-            String hostname = RuntimeSettings::hostname();
-            snprintf(line, sizeof(line), "%s.local    %s", hostname.c_str(), WiFi.localIP().toString().c_str());
-            drawText(64, CY + 89, 2, C_CYAN, line, 238, C_PANEL);
+        if (wifiOk) {
+            snprintf(line, sizeof(line), "%.15s", WiFi.SSID().c_str());
+            drawRow(18, CY + 135, "SSID", line, C_CYAN);
+            snprintf(line, sizeof(line), "%s", WiFi.localIP().toString().c_str());
+            drawRow(18, CY + 148, "IP", line, C_TEXT);
+            snprintf(line, sizeof(line), "%d dBm", WiFi.RSSI());
+            drawRow(18, CY + 161, "RSSI", line, WiFi.RSSI() > -70 ? C_GREEN : C_AMBER);
         } else {
-            drawText(64, CY + 89, 2, C_RED, "OFFLINE", 238, C_PANEL);
+            drawRow(18, CY + 135, "SSID", "OFFLINE", C_RED);
+            drawRow(18, CY + 148, "IP", "--", C_MUTED);
+            drawRow(18, CY + 161, "RSSI", "--", C_MUTED);
         }
 
         unsigned long upSec = millis() / 1000;
-        snprintf(line, sizeof(line), "Heap %lu B     Up %luh %02um",
-                 (unsigned long)ESP.getFreeHeap(), upSec / 3600, (unsigned int)((upSec % 3600) / 60));
-        drawText(20, CY + 142, 1, C_MUTED, line, 270, C_PANEL);
-
-        snprintf(line, sizeof(line), "Weather %us    Log %us    Wind %s",
-                 WEATHER_UPDATE_INTERVAL_SEC, DATA_LOG_INTERVAL_SEC, RuntimeSettings::windMetric() ? "m/s" : "km/h");
-        drawText(20, CY + 155, 1, C_MUTED, line, 270, C_PANEL);
+        snprintf(line, sizeof(line), "%luh %02um", upSec / 3600, (unsigned int)((upSec % 3600) / 60));
+        drawRow(174, CY + 135, "UP", line, C_TEXT);
+        snprintf(line, sizeof(line), "%lu KB", (unsigned long)ESP.getFreeHeap() / 1024UL);
+        drawRow(174, CY + 148, "HEAP", line, C_GREEN);
+        snprintf(line, sizeof(line), "%u MHz", ESP.getCpuFreqMHz());
+        drawRow(174, CY + 161, "CPU", line, C_MUTED);
     }
 
 public:
@@ -775,7 +864,7 @@ public:
         switch (currentTab) {
             case TAB_NOW:      drawNowTab(sensor, weather);   break;
             case TAB_FORECAST: drawForecastTab(weather);      break;
-            case TAB_MONIT:    drawMonitTab(status);          break;
+            case TAB_MONIT:    drawMonitTab(sensor, weather, status); break;
             case TAB_SYSTEM:   drawSystemTab(sensor, status); break;
         }
 

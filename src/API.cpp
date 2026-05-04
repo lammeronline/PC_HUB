@@ -276,9 +276,13 @@ static void handleStatus() {
     JsonArray forecast = weather["forecast"].to<JsonArray>();
     for (int i = 0; i < 7; i++) {
         JsonObject day = forecast.add<JsonObject>();
+        day["date"]         = _weather->forecast[i].date;
         day["day"]          = _weather->forecast[i].day;
         day["temp_min"]     = _weather->forecast[i].temp_min;
         day["temp_max"]     = _weather->forecast[i].temp_max;
+        day["wind_speed"]   = RuntimeSettings::windMetric()
+                              ? (_weather->forecast[i].wind_speed / 3.6f)
+                              : _weather->forecast[i].wind_speed;
         day["weather_code"] = _weather->forecast[i].weather_code;
     }
 

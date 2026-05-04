@@ -47,6 +47,20 @@ static int weekdayFromDate(const char* isoDate, int fallback) {
     return (y + y / 4 - y / 100 + y / 400 + offsets[m - 1] + d) % 7;
 }
 
+static void shortDateFromIso(const char* isoDate, char* out, size_t outSize) {
+    if (!out || outSize == 0) return;
+
+    int y = 0;
+    int m = 0;
+    int d = 0;
+    if (!isoDate || sscanf(isoDate, "%d-%d-%d", &y, &m, &d) != 3) {
+        snprintf(out, outSize, "--.--");
+        return;
+    }
+
+    snprintf(out, outSize, "%02d.%02d", d, m);
+}
+
 static bool ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return true;
     WiFi.persistent(false);
@@ -122,12 +136,12 @@ bool fetchWeather(WeatherData &data) {
     if (!_coords_ok)   { data.ok = false; return false; }
     if (!ensureWiFi()) { data.ok = false; return false; }
 
-    char url[300];
+    char url[360];
     snprintf(url, sizeof(url),
              "https://api.open-meteo.com/v1/forecast"
              "?latitude=%.4f&longitude=%.4f"
              "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,is_day"
-             "&daily=temperature_2m_max,temperature_2m_min,weather_code"
+             "&daily=temperature_2m_max,temperature_2m_min,weather_code,wind_speed_10m_max"
              "&timezone=auto&forecast_days=7",
              _lat, _lon);
 
@@ -144,6 +158,7 @@ bool fetchWeather(WeatherData &data) {
     filter["daily"]["temperature_2m_max"]     = true;
     filter["daily"]["temperature_2m_min"]     = true;
     filter["daily"]["weather_code"]           = true;
+    filter["daily"]["wind_speed_10m_max"]     = true;
 
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
@@ -160,9 +175,10 @@ bool fetchWeather(WeatherData &data) {
     JsonArray maxT   = daily["temperature_2m_max"];
     JsonArray minT   = daily["temperature_2m_min"];
     JsonArray codes  = daily["weather_code"];
+    JsonArray wind   = daily["wind_speed_10m_max"];
 
     if (cur.isNull() || dates.size() < 7 || maxT.size() < 7 ||
-        minT.size() < 7 || codes.size() < 7) {
+        minT.size() < 7 || codes.size() < 7 || wind.size() < 7) {
         data.ok = false;
         Serial.println("Weather JSON error: incomplete data");
         return false;
@@ -178,11 +194,14 @@ bool fetchWeather(WeatherData &data) {
     int baseDay = getLocalTime(&timeinfo, 1000) ? timeinfo.tm_wday : 0;
 
     for (int i = 0; i < 7; i++) {
-        int dayIndex = weekdayFromDate(dates[i].as<const char*>(), (baseDay + i) % 7);
+        const char* isoDate = dates[i].as<const char*>();
+        int dayIndex = weekdayFromDate(isoDate, (baseDay + i) % 7);
         strncpy(data.forecast[i].day, DAY_NAMES[dayIndex], 3);
         data.forecast[i].day[3]       = '\0';
+        shortDateFromIso(isoDate, data.forecast[i].date, sizeof(data.forecast[i].date));
         data.forecast[i].temp_max     = maxT[i].as<float>();
         data.forecast[i].temp_min     = minT[i].as<float>();
+        data.forecast[i].wind_speed   = wind[i].as<float>();
         data.forecast[i].weather_code = codes[i].as<int>();
     }
 
@@ -193,6 +212,7 @@ bool fetchWeather(WeatherData &data) {
 
 const char* weatherDesc(int code) {
     if (code == 0)  return "Clear   ";
+    if (code <= 2)  return "Partly  ";
     if (code <= 3)  return "Cloudy  ";
     if (code <= 48) return "Fog     ";
     if (code <= 55) return "Drizzle ";
