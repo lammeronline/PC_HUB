@@ -180,6 +180,7 @@ void loop() {
 
     if (now - lastSensorUpdate >= SENSOR_INTERVAL_MS) {
         updateSensors(currentData);
+        updateLED(currentData.temperature, currentData.humidity, currentData.gas, currentData.bme_ok);
         drawUI(currentData, weatherData, currentUiStatus());
         lastSensorUpdate = now;
     }

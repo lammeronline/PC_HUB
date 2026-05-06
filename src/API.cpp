@@ -254,6 +254,8 @@ static void handleStatus() {
     system["ntp_offset_sec"]       = RuntimeSettings::ntpOffsetSec();
     system["backlight_pct"]        = Backlight::brightness();
     system["backlight_inverted"]   = RuntimeSettings::backlightInverted();
+    system["led_mode"]             = RuntimeSettings::ledMode();
+    system["pc_enabled"]           = RuntimeSettings::pcEnabled();
 
     JsonObject sensor = doc["sensor"].to<JsonObject>();
     sensor["rtc_ok"]      = _sensor->rtc_ok;
@@ -345,6 +347,7 @@ static void handleSettingsGet() {
     doc["ntp_offset_sec"] = RuntimeSettings::ntpOffsetSec();
     doc["backlight_pct"]  = Backlight::brightness();
     doc["backlight_inverted"] = RuntimeSettings::backlightInverted();
+    doc["led_mode"]       = RuntimeSettings::ledMode();
     sendJson(doc);
 }
 
@@ -362,6 +365,7 @@ static void handleSettingsPost() {
     bool weatherChanged = false;
     bool windChanged = false;
     bool backlightChanged = false;
+    bool ledChanged = false;
 
     if (doc["wifi_ssid"].is<const char*>()) {
         String ssid = doc["wifi_ssid"].as<String>();
@@ -424,6 +428,15 @@ static void handleSettingsPost() {
         backlightChanged = true;
     }
 
+    if (doc["led_mode"].is<int>()) {
+        RuntimeSettings::saveLedMode((uint8_t)constrain(doc["led_mode"].as<int>(), 0, 3));
+        ledChanged = true;
+    }
+
+    if (doc["pc_enabled"].is<bool>()) {
+        RuntimeSettings::savePcEnabled(doc["pc_enabled"].as<bool>());
+    }
+
     JsonDocument resp;
     resp["ok"] = true;
     resp["wifi_changed"] = wifiChanged;
@@ -432,6 +445,7 @@ static void handleSettingsPost() {
     resp["weather_changed"] = weatherChanged;
     resp["wind_changed"] = windChanged;
     resp["backlight_changed"] = backlightChanged;
+    resp["led_changed"] = ledChanged;
     sendJson(resp);
 
     if (wifiChanged) {
@@ -583,6 +597,10 @@ static void handleOtaDone() {
 static void handlePCPost() {
     if (!_pcData) {
         server.send(503, "application/json", "{\"ok\":false,\"error\":\"not ready\"}");
+        return;
+    }
+    if (!RuntimeSettings::pcEnabled()) {
+        server.send(200, "application/json", "{\"ok\":false,\"paused\":true}");
         return;
     }
     String body = server.arg("plain");

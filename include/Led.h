@@ -2,6 +2,6 @@
 #include <Arduino.h>
 
 void initLED();
-// Функция принимает значения цвета от 0 (выключен) до 255 (максимум)
-void setLED(uint8_t r, uint8_t g, uint8_t b); 
+void setLED(uint8_t r, uint8_t g, uint8_t b);
 void offLED();
+void updateLED(float temp, float hum, float gas, bool bme_ok);

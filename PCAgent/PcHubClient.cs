@@ -14,6 +14,7 @@ public class PcHubClient : IDisposable
     private bool _disposed;
 
     public bool IsConnected { get; private set; }
+    public bool IsPaused { get; private set; }
     public string StatusMessage { get; private set; } = "Disconnected";
     public string TransportInfo { get; private set; } = "";
 
@@ -87,13 +88,32 @@ public class PcHubClient : IDisposable
 
             if (response.IsSuccessStatusCode)
             {
+                string body = await response.Content.ReadAsStringAsync();
+                bool paused = false;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    paused = doc.RootElement.TryGetProperty("paused", out var p) && p.GetBoolean();
+                }
+                catch { }
+
+                if (paused)
+                {
+                    IsConnected = false;
+                    IsPaused = true;
+                    StatusMessage = "Paused by device";
+                    return true;
+                }
+
                 IsConnected = true;
+                IsPaused = false;
                 StatusMessage = $"Connected via WiFi · {_settings.WifiHost}";
                 return true;
             }
             else
             {
                 IsConnected = false;
+                IsPaused = false;
                 StatusMessage = $"HTTP {(int)response.StatusCode} from device";
                 return false;
             }
@@ -101,18 +121,21 @@ public class PcHubClient : IDisposable
         catch (TaskCanceledException)
         {
             IsConnected = false;
+            IsPaused = false;
             StatusMessage = "WiFi timeout — device unreachable";
             return false;
         }
         catch (HttpRequestException ex)
         {
             IsConnected = false;
+            IsPaused = false;
             StatusMessage = $"WiFi error: {ex.Message}";
             return false;
         }
         catch (Exception ex)
         {
             IsConnected = false;
+            IsPaused = false;
             StatusMessage = $"Send error: {ex.Message}";
             return false;
         }

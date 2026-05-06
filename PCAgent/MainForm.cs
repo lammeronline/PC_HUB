@@ -26,11 +26,14 @@ public class MainForm : Form
     private PcHubClient _client;
     private System.Windows.Forms.Timer _timer;
     private bool _suppressClose;
+    private bool _paused;
 
     // ── Header ─────────────────────────────────────────────────────────────────
-    private Panel _headerPanel = null!;
-    private Panel _statusDot   = null!;
-    private Label _statusLabel = null!;
+    private Panel  _headerPanel = null!;
+    private Panel  _statusDot   = null!;
+    private Label  _statusLabel = null!;
+    private Button _pauseBtn    = null!;
+    private ToolStripMenuItem _pauseItem = null!;
 
     // ── Tab control ────────────────────────────────────────────────────────────
     private TabControl _tabs = null!;
@@ -156,15 +159,30 @@ public class MainForm : Form
         {
             AutoSize  = false,
             Location  = new Point(30, 9),
-            Size      = new Size(380, 18),
+            Size      = new Size(290, 18),
             BackColor = Color.Transparent,
             ForeColor = ColMuted,
             Font      = new Font("Segoe UI", 9f),
             Text      = "Disconnected"
         };
 
+        _pauseBtn = new Button
+        {
+            Text        = "⏸  Pause",
+            Location    = new Point(334, 6),
+            Size        = new Size(90, 24),
+            BackColor   = ColCard,
+            ForeColor   = ColMuted,
+            FlatStyle   = FlatStyle.Flat,
+            Font        = new Font("Segoe UI", 8.5f),
+            Cursor      = Cursors.Hand,
+        };
+        _pauseBtn.FlatAppearance.BorderColor = ColPanel;
+        _pauseBtn.Click += (_, _) => TogglePause();
+
         _headerPanel.Controls.Add(_statusDot);
         _headerPanel.Controls.Add(_statusLabel);
+        _headerPanel.Controls.Add(_pauseBtn);
         Controls.Add(_headerPanel);
     }
 
@@ -474,12 +492,18 @@ public class MainForm : Form
         showItem.ForeColor = ColText;
         showItem.Click    += (_, _) => ToggleVisibility();
 
+        _pauseItem = new ToolStripMenuItem("⏸  Pause");
+        _pauseItem.Font      = new Font("Segoe UI", 9f);
+        _pauseItem.ForeColor = ColAmber;
+        _pauseItem.Click    += (_, _) => TogglePause();
+
         var exitItem = new ToolStripMenuItem("Exit");
         exitItem.Font      = new Font("Segoe UI", 9f);
         exitItem.ForeColor = ColRed;
         exitItem.Click    += (_, _) => ExitApp();
 
         _trayMenu.Items.Add(showItem);
+        _trayMenu.Items.Add(_pauseItem);
         _trayMenu.Items.Add(new ToolStripSeparator());
         _trayMenu.Items.Add(exitItem);
 
@@ -492,6 +516,13 @@ public class MainForm : Form
         };
 
         _trayIcon.DoubleClick += (_, _) => ToggleVisibility();
+    }
+
+    private void SwapTrayIcon(Color color)
+    {
+        var old = _trayIcon.Icon;
+        _trayIcon.Icon = CreateTrayIcon(color);
+        old?.Dispose();
     }
 
     private static Icon CreateTrayIcon(Color color)
@@ -521,6 +552,9 @@ public class MainForm : Form
 
         try
         {
+            if (_paused)
+                return;
+
             var metrics = _monitor.Read();
             Text = $"PCHUB Agent  |  CPU: {metrics.CpuName}  |  GPU: {metrics.GpuName}";
             await _client.SendAsync(metrics);
@@ -536,6 +570,32 @@ public class MainForm : Form
         {
             _timer.Interval = _settings.UpdateIntervalSec * 1000;
             _timer.Start();
+        }
+    }
+
+    private void TogglePause()
+    {
+        _paused = !_paused;
+
+        if (_paused)
+        {
+            _pauseBtn.Text           = "▶  Resume";
+            _pauseBtn.ForeColor      = ColGreen;
+            _pauseItem.Text          = "▶  Resume";
+            _statusLabel.Text        = "Paused";
+            _statusLabel.ForeColor   = ColMuted;
+            _statusDot.BackColor     = ColAmber;
+            _trayIcon.Text           = "PCHUB Agent (Paused)";
+            SwapTrayIcon(ColAmber);
+        }
+        else
+        {
+            _pauseBtn.Text           = "⏸  Pause";
+            _pauseBtn.ForeColor      = ColMuted;
+            _pauseItem.Text          = "⏸  Pause";
+            _trayIcon.Text           = "PCHUB Agent";
+            SwapTrayIcon(ColCyan);
+            UpdateHeaderUi();
         }
     }
 
@@ -588,8 +648,11 @@ public class MainForm : Form
 
     private void UpdateHeaderUi()
     {
-        _statusLabel.Text    = _client.StatusMessage;
-        _statusDot.BackColor = _client.IsConnected ? ColGreen : ColRed;
+        if (_paused) return;
+        _statusLabel.Text      = _client.StatusMessage;
+        _statusDot.BackColor   = _client.IsConnected ? ColGreen
+                               : _client.IsPaused    ? ColAmber
+                               :                       ColRed;
         _statusLabel.ForeColor = _client.IsConnected ? ColText : ColMuted;
     }
 
