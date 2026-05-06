@@ -604,6 +604,12 @@ static void handlePCPost() {
         server.send(400, "application/json", "{\"ok\":false,\"error\":\"wrong type\"}");
         return;
     }
+    const char *cn = doc["cn"] | "";
+    strncpy(_pcData->cpu_name, cn, sizeof(_pcData->cpu_name) - 1);
+    _pcData->cpu_name[sizeof(_pcData->cpu_name) - 1] = '\0';
+    const char *gn = doc["gn"] | "";
+    strncpy(_pcData->gpu_name, gn, sizeof(_pcData->gpu_name) - 1);
+    _pcData->gpu_name[sizeof(_pcData->gpu_name) - 1] = '\0';
     _pcData->cpu_temp       = doc["ct"]  | 0.0f;
     _pcData->cpu_load       = doc["cl"]  | 0.0f;
     _pcData->cpu_power      = doc["cp"]  | 0.0f;
@@ -615,9 +621,9 @@ static void handlePCPost() {
     _pcData->ram_total      = doc["rt"]  | (uint32_t)0;
     _pcData->ok             = true;
     _pcData->lastMs         = millis();
-    Serial.printf("[PC] CPU=%.0fC/%.0f%% GPU=%.0fC/%.0f%% RAM=%lu/%luMB\n",
-        _pcData->cpu_temp, _pcData->cpu_load,
-        _pcData->gpu_temp, _pcData->gpu_load,
+    Serial.printf("[PC] CPU=%s %.0fC/%.0f%% GPU=%s %.0fC/%.0f%% RAM=%lu/%luMB\n",
+        _pcData->cpu_name, _pcData->cpu_temp, _pcData->cpu_load,
+        _pcData->gpu_name, _pcData->gpu_temp, _pcData->gpu_load,
         (unsigned long)_pcData->ram_used, (unsigned long)_pcData->ram_total);
     server.send(200, "application/json", "{\"ok\":true}");
 }

@@ -31,9 +31,12 @@ public class PcMetrics
 
     public string ToJson()
     {
+        static string Esc(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
         var sb = new StringBuilder();
         sb.Append("{");
         sb.Append("\"type\":\"pc\",");
+        sb.Append($"\"cn\":\"{Esc(CpuName[..Math.Min(CpuName.Length, 31)])}\",");
+        sb.Append($"\"gn\":\"{Esc(GpuName[..Math.Min(GpuName.Length, 31)])}\",");
         sb.Append($"\"ct\":{F(CpuTemp)},");
         sb.Append($"\"cl\":{F(CpuLoad)},");
         sb.Append($"\"cp\":{F(CpuPower)},");

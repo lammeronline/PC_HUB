@@ -8,3 +8,4 @@
 # C# build artifacts
 PCAgent/bin/
 PCAgent/obj/
+PCAgent/build/

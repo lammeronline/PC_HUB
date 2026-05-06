@@ -3,9 +3,11 @@
 
 struct PCData {
     bool     ok             = false;
+    char     cpu_name[32]   = {};
     float    cpu_temp       = 0;
     float    cpu_load       = 0;
     float    cpu_power      = 0;
+    char     gpu_name[32]   = {};
     float    gpu_temp       = 0;
     float    gpu_load       = 0;
     uint16_t gpu_vram_used  = 0;   // MB

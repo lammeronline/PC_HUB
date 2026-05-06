@@ -26,7 +26,6 @@ static const uint16_t C_GREEN  = 0x474F; // #43e884
 static const uint16_t C_AMBER  = 0xFDC5; // #ffbd2e
 static const uint16_t C_ORANGE = 0xFC85; // #ff922e
 static const uint16_t C_RED    = 0xFAAB; // #ff4f5f
-static const uint16_t C_BLUE   = 0x367F;
 static const uint16_t C_PILL   = 0x1948; // #1a2a44
 
 static const char* DOW_NAMES[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
@@ -49,23 +48,21 @@ private:
         bool pcOn = false;
         int weatherCode = -999;
         bool weatherIsDay = true;
-        float weatherTemp = -999.0f; // Добавлен кеш температуры погоды
-        uint16_t airBorderNow = 0xFFFF;
-        uint16_t airBorderOffline = 0xFFFF;
-        
+        float weatherTemp = -999.0f;
+
         float cpuTemp = -1, cpuLoad = -1;
         float gpuTemp = -1, gpuLoad = -1;
         uint32_t ramUsed = 0xFFFFFFFF;
-        uint16_t ramBorder = 0xFFFF;
-        
+
         bool monitPcWas = false;
-        uint16_t hwBorder = 0xFFFF;
-        uint16_t wfBorder = 0xFFFF;
+        char cpuName[32] = {};
+        char gpuName[32] = {};
         uint8_t sysFlags = 0xFF;
     } cache;
 
     // ── Примитивы отрисовки ──────────────────────────────────────────────────
     void drawText(int x, int y, int font, uint16_t color, const char *text, int pad, uint16_t bg = C_BG) {
+        tft->setTextDatum(TL_DATUM);
         tft->setTextFont(font);
         tft->setTextColor(color, bg);
         tft->setTextPadding(pad);
@@ -116,7 +113,7 @@ private:
     uint16_t heatCol(float frac) {
         if (frac > 0.8f) return C_RED;
         if (frac > 0.6f) return C_AMBER;
-        return C_CYAN;
+        return C_GREEN;
     }
 
     uint16_t tempColor(float v) {
@@ -129,7 +126,7 @@ private:
     uint16_t humColor(float v) {
         if (v < 30.0f) return C_AMBER;
         if (v < 60.0f) return C_GREEN;
-        if (v < 70.0f) return C_VIOLET;
+        if (v < 70.0f) return C_ORANGE;
         return C_RED;
     }
 
@@ -147,14 +144,25 @@ private:
     void drawIconCPU(int cx, int cy, uint16_t col) { tft->drawRect(cx-4, cy+2, 9, 8, col); tft->fillRect(cx-2, cy+4, 5, 4, col); tft->drawLine(cx-2, cy, cx-2, cy+2, col); tft->drawLine(cx+2, cy, cx+2, cy+2, col); tft->drawLine(cx-2, cy+10, cx-2, cy+12, col); tft->drawLine(cx+2, cy+10, cx+2, cy+12, col); }
     void drawIconGPU(int cx, int cy, uint16_t col) { tft->drawRect(cx-5, cy+3, 11, 6, col); for (int i=-4; i<=4; i+=2) tft->drawLine(cx+i, cy, cx+i, cy+3, col); tft->drawLine(cx-3, cy+9, cx-3, cy+12, col); tft->drawLine(cx+2, cy+9, cx+2, cy+12, col); }
     void drawIconRAM(int cx, int cy, uint16_t col) { tft->drawRect(cx-5, cy+3, 11, 5, col); tft->fillRect(cx-4, cy+1, 2, 2, col); tft->fillRect(cx-1, cy+1, 2, 2, col); tft->fillRect(cx+2, cy+1, 2, 2, col); tft->drawLine(cx-3, cy+8, cx-3, cy+11, col); tft->drawLine(cx, cy+8, cx, cy+11, col); tft->drawLine(cx+3, cy+8, cx+3, cy+11, col); }
+    // Маленькие иконки для строк прогресс-баров (8×8px, cx=центр, cy=верх)
+    void drawIconLoad(int cx, int cy, uint16_t col) {
+        tft->fillRect(cx - 4, cy, 9, 9, C_PANEL);
+        tft->fillRect(cx - 4, cy + 5, 2, 3, col);
+        tft->fillRect(cx - 1, cy + 2, 2, 6, col);
+        tft->fillRect(cx + 2, cy,     2, 8, col);
+    }
+    void drawIconTempSm(int cx, int cy, uint16_t col) {
+        tft->fillRect(cx - 2, cy, 5, 9, C_PANEL);
+        tft->fillRect(cx - 1, cy, 2, 6, col);
+        tft->fillCircle(cx, cy + 6, 2, col);
+    }
 
     // ── Хелперы ──────────────────────────────────────────────────────────────
     uint16_t airQColor(float gas) {
-        if (gas >= 300) return C_GREEN;
         if (gas >= 150) return C_GREEN;
         if (gas >= 100) return C_AMBER;
-        if (gas >=  50) return C_RED;
-        return C_VIOLET;
+        if (gas >=  50) return C_ORANGE;
+        return C_RED;
     }
 
     const char* airQLabel(float gas) {
@@ -277,7 +285,7 @@ private:
 
         // 1. Блок ЧАСОВ
         if (contentDirty) {
-            drawCard(8, CY + 2, SW - 16, 64, C_BLUE);
+            drawCard(8, CY + 2, SW - 16, 64, C_CYAN);
             tft->drawLine(209, CY + 10, 209, CY + 56, C_STROKE);
         }
 
@@ -300,7 +308,7 @@ private:
             tft->fillRoundRect(206, CY + 2, 106, 64, 7, C_PANEL);
             tft->drawRoundRect(8, CY + 2, SW - 16, 64, 7, C_STROKE);
             tft->drawLine(209, CY + 10, 209, CY + 56, C_STROKE);
-            tft->fillRect(208, CY + 3, 102, 2, C_BLUE);
+            tft->fillRect(208, CY + 3, 102, 2, C_CYAN);
 
             tft->setTextPadding(0); // сброс унаследованного padding от часов
             tft->setTextFont(2);
@@ -355,19 +363,10 @@ private:
             if (contentDirty) {
                 drawCard(c1, CY + 70, w, 46, C_CYAN);
                 drawIconTemp(cx1, CY + 77, C_CYAN);
-            }
-            if (contentDirty) {
                 drawCard(c2, CY + 70, w, 46, C_VIOLET);
                 drawIconHum(cx2, CY + 77, C_VIOLET);
-            }
-            if (contentDirty) {
                 drawCard(c3, CY + 70, w, 46, C_GREEN);
                 drawIconPress(cx3, CY + 77, C_GREEN);
-            }
-
-            uint16_t airBdr = sensor.bme_ok ? airQColor(sensor.gas) : C_STROKE;
-            if (contentDirty) {
-                cache.airBorderNow = airBdr;
                 drawCard(c4, CY + 70, w, 46, C_ORANGE);
                 drawIconAir(cx4, CY + 77, C_ORANGE);
             }
@@ -422,17 +421,19 @@ private:
             if (contentDirty || _pc->cpu_temp != cache.cpuTemp || _pc->cpu_load != cache.cpuLoad) {
                 cache.cpuTemp = _pc->cpu_temp; cache.cpuLoad = _pc->cpu_load;
                 float lf = _pc->cpu_load / 100.0f;
-                drawBar(barX, row1 - 3, barW, 6, lf, heatCol(lf));
+                uint16_t lc = heatCol(lf);
+                uint16_t tc = heatCol(_pc->cpu_temp / 100.0f);
+                drawBar(barX, row1 - 3, barW, 6, lf, lc);
                 char loadLine[12];
                 char tempLine[12];
                 snprintf(loadLine, sizeof(loadLine), "%.0f%%", _pc->cpu_load);
                 snprintf(tempLine, sizeof(tempLine), "%.0fC", _pc->cpu_temp);
                 tft->setTextFont(1);
-                tft->setTextColor(C_TEXT, C_PANEL);
+                tft->setTextColor(lc, C_PANEL);
                 tft->setTextDatum(TR_DATUM);
                 tft->setTextPadding(28);
                 tft->drawString(loadLine, 250, row1 - 4);
-                tft->setTextColor(heatCol(lf), C_PANEL);
+                tft->setTextColor(tc, C_PANEL);
                 tft->setTextDatum(TL_DATUM);
                 tft->setTextPadding(34);
                 tft->drawString(tempLine, 256, row1 - 4);
@@ -441,17 +442,19 @@ private:
             if (contentDirty || _pc->gpu_temp != cache.gpuTemp || _pc->gpu_load != cache.gpuLoad) {
                 cache.gpuTemp = _pc->gpu_temp; cache.gpuLoad = _pc->gpu_load;
                 float lf = _pc->gpu_load / 100.0f;
-                drawBar(barX, row2 - 3, barW, 6, lf, heatCol(lf));
+                uint16_t lc = heatCol(lf);
+                uint16_t tc = heatCol(_pc->gpu_temp / 100.0f);
+                drawBar(barX, row2 - 3, barW, 6, lf, lc);
                 char loadLine[12];
                 char tempLine[12];
                 snprintf(loadLine, sizeof(loadLine), "%.0f%%", _pc->gpu_load);
                 snprintf(tempLine, sizeof(tempLine), "%.0fC", _pc->gpu_temp);
                 tft->setTextFont(1);
-                tft->setTextColor(C_TEXT, C_PANEL);
+                tft->setTextColor(lc, C_PANEL);
                 tft->setTextDatum(TR_DATUM);
                 tft->setTextPadding(28);
                 tft->drawString(loadLine, 250, row2 - 4);
-                tft->setTextColor(heatCol(lf), C_PANEL);
+                tft->setTextColor(tc, C_PANEL);
                 tft->setTextDatum(TL_DATUM);
                 tft->setTextPadding(34);
                 tft->drawString(tempLine, 256, row2 - 4);
@@ -461,10 +464,9 @@ private:
                 cache.ramUsed = _pc->ram_used;
                 float rf = _pc->ram_total > 0 ? (float)_pc->ram_used / _pc->ram_total : 0.0f;
                 uint16_t rc = heatCol(rf);
-                if (contentDirty || rc != cache.ramBorder) {
-                    cache.ramBorder = rc;
+                if (contentDirty) {
                     tft->fillRect(14, row3 - 6, 48, 14, C_PANEL);
-                    drawIconRAM(22, row3 - 6, rc);
+                    drawIconRAM(22, row3 - 6, C_GREEN);
                     drawText(36, row3 - 4, 1, C_MUTED, "RAM", 28, C_PANEL);
                 }
                 drawBar(barX, row3 - 3, barW, 6, rf, rc);
@@ -502,9 +504,7 @@ private:
             snprintf(line, sizeof(line), sensor.bme_ok ? "%.0f hPa" : "--", sensor.pressure);
             drawText(20, CY + 153, 2, sensor.bme_ok ? pressCol : C_MUTED, line, 120, C_PANEL);
 
-            uint16_t airBorder = sensor.bme_ok ? airQColor(sensor.gas) : C_MUTED;
             if (contentDirty) {
-                cache.airBorderOffline = airBorder;
                 drawCard(164, CY + 130, 148, 52, C_ORANGE);
                 drawIconAir(180, CY + 138, C_ORANGE);
                 drawText(192, CY + 137, 1, C_MUTED, "AIR QUALITY", 100, C_PANEL);
@@ -574,57 +574,76 @@ private:
         }
 
         if (pc) {
-            int row1 = CY + 42; 
-            int row2 = CY + 84; 
-            int row3 = CY + 126;
+            // Карточки 52px: 22 + 52 + 6 + 52 + 6 + 52 = 190 = CONTENT_H
+            // Баровая зона: иконка cx=20 (x14..26), бар x=28..200, значение x=204
+            const int bX = 28, bW = 172, bH = 8, valX = bX + bW + 4;
+            int row1 = CY + 32;
+            int row2 = CY + 90;
+            int row3 = CY + 148;
 
             if (forceRedraw) {
                 drawText(10, CY + 4, 2, C_TEXT, "PC MONITOR", 140);
                 drawText(156, CY + 8, 1, C_GREEN, "LIVE", 50);
-                
-                drawCard(8, CY + 24, SW - 16, 36, C_AMBER);
-                drawIconCPU(24, row1 - 6, C_AMBER); 
-                drawText(38, row1 - 4, 1, C_MUTED, "CPU", 30, C_PANEL); 
 
-                drawCard(8, CY + 66, SW - 16, 36, C_CYAN);
-                drawIconGPU(24, row2 - 6, C_CYAN);
-                drawText(38, row2 - 4, 1, C_MUTED, "GPU", 30, C_PANEL);
+                drawCard(8, CY + 22, SW - 16, 52, C_AMBER);
+                drawIconCPU(20, row1 - 4, C_AMBER);
+                drawText(32, row1 - 2, 1, C_MUTED, "CPU", 22, C_PANEL);
+                drawText(56, row1 - 2, 1, C_TEXT, _pc->cpu_name, 242, C_PANEL);
+
+                drawCard(8, CY + 80, SW - 16, 52, C_CYAN);
+                drawIconGPU(20, row2 - 4, C_CYAN);
+                drawText(32, row2 - 2, 1, C_MUTED, "GPU", 22, C_PANEL);
+                drawText(56, row2 - 2, 1, C_TEXT, _pc->gpu_name, 242, C_PANEL);
             }
-            
-            // Динамика CPU (Обмен местами: Сначала Бар -> Загрузка -> Температура -> Ватты)
-            if (forceRedraw || _pc->cpu_temp != cache.cpuTemp || _pc->cpu_load != cache.cpuLoad) {
+
+            // Динамика CPU
+            if (forceRedraw || strcmp(_pc->cpu_name, cache.cpuName) != 0 ||
+                _pc->cpu_temp != cache.cpuTemp || _pc->cpu_load != cache.cpuLoad) {
+                strncpy(cache.cpuName, _pc->cpu_name, sizeof(cache.cpuName) - 1);
                 cache.cpuTemp = _pc->cpu_temp; cache.cpuLoad = _pc->cpu_load;
-                float tf = _pc->cpu_temp / 100.0f;
-                uint16_t tc = heatCol(tf);
-                
-                drawBar(70, row1 - 4, 110, 8, _pc->cpu_load/100.0f, tc);
-                
+                float lf = _pc->cpu_load / 100.0f;
+                uint16_t lc = heatCol(lf);
+                uint16_t tc = heatCol(_pc->cpu_temp / 100.0f);
+
+                drawText(56, row1 - 2, 1, C_TEXT, _pc->cpu_name, 242, C_PANEL);
+
+                drawIconLoad(20, CY + 46, lc);
+                drawBar(bX, CY + 46, bW, bH, lf, lc);
                 snprintf(lLine, sizeof(lLine), "%.0f%%", _pc->cpu_load);
+                drawText(valX, CY + 47, 1, lc, lLine, 34, C_PANEL);
+
+                drawIconTempSm(20, CY + 60, tc);
+                drawBar(bX, CY + 60, bW, bH, _pc->cpu_temp / 100.0f, tc);
                 snprintf(tLine, sizeof(tLine), "%.0fC", _pc->cpu_temp);
                 if (_pc->cpu_power > 0) snprintf(eLine, sizeof(eLine), "%.0fW", _pc->cpu_power);
                 else eLine[0] = '\0';
-
-                drawText(186, row1 - 4, 1, C_TEXT, lLine, 36, C_PANEL);  // ПРОЦЕНТ ЗАГРУЗКИ
-                drawText(228, row1 - 4, 1, tc, tLine, 40, C_PANEL);     // ТЕМПЕРАТУРА
-                drawText(274, row1 - 4, 1, C_MUTED, eLine, 36, C_PANEL); // ВАТТЫ
+                drawText(valX,      CY + 61, 1, tc,     tLine, 34, C_PANEL);
+                drawText(valX + 36, CY + 61, 1, C_MUTED, eLine, 30, C_PANEL);
             }
 
             // Динамика GPU
-            if (forceRedraw || _pc->gpu_temp != cache.gpuTemp || _pc->gpu_load != cache.gpuLoad) {
+            if (forceRedraw || strcmp(_pc->gpu_name, cache.gpuName) != 0 ||
+                _pc->gpu_temp != cache.gpuTemp || _pc->gpu_load != cache.gpuLoad) {
+                strncpy(cache.gpuName, _pc->gpu_name, sizeof(cache.gpuName) - 1);
                 cache.gpuTemp = _pc->gpu_temp; cache.gpuLoad = _pc->gpu_load;
-                float tf = _pc->gpu_temp / 100.0f;
-                uint16_t tc = heatCol(tf);
-                
-                drawBar(70, row2 - 4, 110, 8, _pc->gpu_load/100.0f, tc);
-                
+                float lf = _pc->gpu_load / 100.0f;
+                uint16_t lc = heatCol(lf);
+                uint16_t tc = heatCol(_pc->gpu_temp / 100.0f);
+
+                drawText(56, row2 - 2, 1, C_TEXT, _pc->gpu_name, 242, C_PANEL);
+
+                drawIconLoad(20, CY + 104, lc);
+                drawBar(bX, CY + 104, bW, bH, lf, lc);
                 snprintf(lLine, sizeof(lLine), "%.0f%%", _pc->gpu_load);
+                drawText(valX, CY + 105, 1, lc, lLine, 34, C_PANEL);
+
+                drawIconTempSm(20, CY + 118, tc);
+                drawBar(bX, CY + 118, bW, bH, _pc->gpu_temp / 100.0f, tc);
                 snprintf(tLine, sizeof(tLine), "%.0fC", _pc->gpu_temp);
                 if (_pc->gpu_vram_total > 0) snprintf(eLine, sizeof(eLine), "%.1fG", _pc->gpu_vram_used / 1024.0f);
                 else eLine[0] = '\0';
-
-                drawText(186, row2 - 4, 1, C_TEXT, lLine, 36, C_PANEL);  // ПРОЦЕНТ ЗАГРУЗКИ
-                drawText(228, row2 - 4, 1, tc, tLine, 40, C_PANEL);     // ТЕМПЕРАТУРА
-                drawText(274, row2 - 4, 1, C_MUTED, eLine, 36, C_PANEL); // VRAM
+                drawText(valX,      CY + 119, 1, tc,     tLine, 34, C_PANEL);
+                drawText(valX + 36, CY + 119, 1, C_MUTED, eLine, 30, C_PANEL);
             }
 
             // Динамика RAM
@@ -632,21 +651,24 @@ private:
                 cache.ramUsed = _pc->ram_used;
                 float rf = _pc->ram_total > 0 ? (float)_pc->ram_used / _pc->ram_total : 0.0f;
                 uint16_t rc = heatCol(rf);
-                
-                if (forceRedraw || rc != cache.ramBorder) {
-                    cache.ramBorder = rc;
-                    drawCard(8, CY + 108, SW - 16, 36, rc);
-                    drawIconRAM(24, row3 - 6, rc);
-                    drawText(38, row3 - 4, 1, C_MUTED, "RAM", 30, C_PANEL);
-                }
-                
-                drawBar(70, row3 - 4, 110, 8, rf, rc);
-                
-                snprintf(lLine, sizeof(lLine), "%.1fG", _pc->ram_used / 1024.0f);
-                snprintf(tLine, sizeof(tLine), "%.0fG", _pc->ram_total / 1024.0f);
 
-                drawText(186, row3 - 4, 1, rc, lLine, 36, C_PANEL);
-                drawText(228, row3 - 4, 1, C_MUTED, tLine, 40, C_PANEL);
+                if (forceRedraw) {
+                    drawCard(8, CY + 138, SW - 16, 52, C_GREEN);
+                    drawIconRAM(20, row3 - 4, C_GREEN);
+                    drawText(32, row3 - 2, 1, C_MUTED, "RAM", 22, C_PANEL);
+                }
+
+                drawIconLoad(20, CY + 162, rc);
+                drawBar(bX, CY + 162, bW, bH, rf, rc);
+
+                snprintf(lLine, sizeof(lLine), "%.1fG/%.0fG", _pc->ram_used / 1024.0f, _pc->ram_total / 1024.0f);
+                snprintf(eLine, sizeof(eLine), "%.0f%%", rf * 100.0f);
+                drawText(valX,      CY + 163, 1, rc,      lLine, 62, C_PANEL);
+                drawText(valX + 64, CY + 163, 1, C_MUTED, eLine, 28, C_PANEL);
+
+                float freeG = (_pc->ram_total - _pc->ram_used) / 1024.0f;
+                snprintf(lLine, sizeof(lLine), "FREE  %.1fG", freeG);
+                drawText(bX, CY + 176, 1, C_MUTED, lLine, 80, C_PANEL);
             }
 
         } else {

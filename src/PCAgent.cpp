@@ -21,9 +21,15 @@ void handlePCSerial() {
                 if (deserializeJson(doc, _buf) == DeserializationError::Ok) {
                     const char *type = doc["type"] | "";
                     if (strcmp(type, "pc") == 0) {
+                        const char *cn = doc["cn"] | "";
+                        strncpy(_pc->cpu_name, cn, sizeof(_pc->cpu_name) - 1);
+                        _pc->cpu_name[sizeof(_pc->cpu_name) - 1] = '\0';
                         _pc->cpu_temp       = doc["ct"]  | 0.0f;
                         _pc->cpu_load       = doc["cl"]  | 0.0f;
                         _pc->cpu_power      = doc["cp"]  | 0.0f;
+                        const char *gn = doc["gn"] | "";
+                        strncpy(_pc->gpu_name, gn, sizeof(_pc->gpu_name) - 1);
+                        _pc->gpu_name[sizeof(_pc->gpu_name) - 1] = '\0';
                         _pc->gpu_temp       = doc["gt"]  | 0.0f;
                         _pc->gpu_load       = doc["gl"]  | 0.0f;
                         _pc->gpu_vram_used  = doc["gvr"] | (uint16_t)0;

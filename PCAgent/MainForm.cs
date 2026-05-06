@@ -522,6 +522,7 @@ public class MainForm : Form
         try
         {
             var metrics = _monitor.Read();
+            Text = $"PCHUB Agent  |  CPU: {metrics.CpuName}  |  GPU: {metrics.GpuName}";
             await _client.SendAsync(metrics);
             UpdateMonitorUi(metrics);
             UpdateHeaderUi();
