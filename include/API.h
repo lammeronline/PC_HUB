@@ -10,3 +10,4 @@ void handleAPI();
 bool apiReady();
 bool apiPendingRestart();
 void setApiApMode(bool v);
+void preloadHistoryFromSD();

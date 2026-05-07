@@ -154,10 +154,91 @@ static void updateHistory() {
     if (nowMs - lastSampleMs < 1000UL) return;
     lastSampleMs = nowMs;
 
-    uint32_t nowSec = millis() / 1000UL;
+    uint32_t nowSec = getRTCUnixTime();
+    if (nowSec == 0) nowSec = millis() / 1000UL; // fallback when no RTC
     updateHistoryBucket(_acc24, _hist24, _hist24Rev, 5UL * 60UL, nowSec, *_sensor);
     updateHistoryBucket(_acc7, _hist7, _hist7Rev, 60UL * 60UL, nowSec, *_sensor);
     updateHistoryBucket(_acc30, _hist30, _hist30Rev, 6UL * 60UL * 60UL, nowSec, *_sensor);
+}
+
+// Читает хвост CSV-лога и заполняет кольцевые буферы истории.
+// Объявлена в API.h — вызывается из main.cpp при буте.
+// Максимальное окно чтения — последние READ_WINDOW байт (≈ 30 дней).
+void preloadHistoryFromSD() {
+    const char *path = "/readings.csv";
+    if (!SD.exists(path)) return;
+
+    File f = SD.open(path, FILE_READ);
+    if (!f) return;
+
+    uint32_t rtcNow = getRTCUnixTime();
+    if (rtcNow == 0) { f.close(); return; } // нет RTC — нет абсолютного времени
+
+    // Ограничение: читаем не более последних ~30 дней (≈ 3,5 МБ при 60 с интервале)
+    const size_t READ_WINDOW = 3500UL * 1024UL;
+    size_t fileSize = f.size();
+    if (fileSize > READ_WINDOW + 256) {
+        f.seek(fileSize - READ_WINDOW);
+        f.readStringUntil('\n'); // пропускаем неполную строку
+    } else {
+        f.readStringUntil('\n'); // пропускаем заголовок
+    }
+
+    // Следующий допустимый момент для каждого кольцевого буфера (time-based decimation)
+    uint32_t next24 = 0, next7 = 0, next30 = 0;
+
+    int loaded = 0;
+    char buf[140];
+    while (f.available()) {
+        int len = f.readBytesUntil('\n', buf, sizeof(buf) - 1);
+        if (len < 24) continue;
+        buf[len] = '\0';
+
+        // Формат: "DD.MM.YYYY  HH:MM:SS",rtc_ok,bme_ok,temp,hum,press,gas,...
+        int dd, mm, yy, hh, mi, ss, rtc_ok, bme_ok_i;
+        float temp, hum, press, gas;
+        if (sscanf(buf, "\"%d.%d.%d  %d:%d:%d\",%d,%d,%f,%f,%f,%f",
+                   &dd, &mm, &yy, &hh, &mi, &ss,
+                   &rtc_ok, &bme_ok_i, &temp, &hum, &press, &gas) != 12) continue;
+        if (!bme_ok_i || yy < 2020 || mm < 1 || mm > 12) continue;
+
+        // Приближённое unix-время строки (без учёта секунд DST — достаточно для истории)
+        // Используем RTClib DateTime напрямую невозможно без включения заголовка,
+        // поэтому считаем вручную через простую формулу Томаса Дальмана.
+        int a = (14 - mm) / 12;
+        int y = yy + 4800 - a;
+        int m = mm + 12 * a - 3;
+        uint32_t jdn = dd + (153 * m + 2) / 5 + 365UL * y + y / 4 - y / 100 + y / 400 - 32045;
+        uint32_t rowUnix = (jdn - 2440588UL) * 86400UL + hh * 3600UL + mi * 60UL + ss;
+
+        if (rowUnix > rtcNow) continue;
+        uint32_t age = rtcNow - rowUnix;
+        if (age > 30UL * 24 * 3600) continue;
+
+        HistoryPoint p;
+        p.ts          = rowUnix; // абсолютный unix-timestamp
+        p.temperature = temp;
+        p.humidity    = hum;
+        p.pressure    = press;
+        p.gas         = gas;
+
+        // Помещаем в кольцо только если прошёл нужный интервал (decimation)
+        if (age <= 24UL * 3600 && rowUnix >= next24) {
+            _hist24.push(p); _hist24Rev++;
+            next24 = rowUnix + 5 * 60; // бакет 5 минут
+        }
+        if (age <= 7UL * 24 * 3600 && rowUnix >= next7) {
+            _hist7.push(p); _hist7Rev++;
+            next7 = rowUnix + 60 * 60; // бакет 1 час
+        }
+        if (rowUnix >= next30) {
+            _hist30.push(p); _hist30Rev++;
+            next30 = rowUnix + 6 * 60 * 60; // бакет 6 часов
+        }
+        loaded++;
+    }
+    f.close();
+    Serial.printf("History preload: %d points from SD\n", loaded);
 }
 
 template <size_t N>

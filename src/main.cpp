@@ -199,6 +199,16 @@ void setup() {
     MQTT::begin(&currentData, &weatherData);
     initPCAgent(&currentPC);
     initPCDisplay(&currentPC);
+
+    // ── Preload history from SD ───────────────────────────────────────────────
+    if (sdReady && currentData.rtc_ok) {
+        bootLabel(tft, LX, y, "SD history", BG, MUTED);
+        bootPending(tft, SX, y, BG, AMBER);
+        preloadHistoryFromSD();
+        bootStatus(tft, SX, y, true, BG);
+        y += ROW;
+    }
+
     logReading(currentData, weatherData);
     lastLogWrite     = millis();
     lastSensorUpdate = millis();

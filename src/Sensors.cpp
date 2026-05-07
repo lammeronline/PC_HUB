@@ -109,6 +109,11 @@ bool syncRTCfromNTP() {
     return true;
 }
 
+uint32_t getRTCUnixTime() {
+    if (!_rtc_found) return 0;
+    return rtc.now().unixtime();
+}
+
 // Функция обновления данных, заполняет нашу структуру
 void updateSensors(SensorData &data) {
     data.rtc_ok = _rtc_found;

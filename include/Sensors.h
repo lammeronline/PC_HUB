@@ -18,3 +18,4 @@ void initSensors();
 void updateSensors(SensorData &data);
 bool connectWiFi();    // Подключение к WiFi в режиме STA, возвращает true при успехе
 bool syncRTCfromNTP(); // Синхронизация RTC по NTP (WiFi уже должен быть подключён)
+uint32_t getRTCUnixTime(); // Unix-время от RTC; 0 если RTC не найден
