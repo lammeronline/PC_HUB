@@ -18,7 +18,14 @@ namespace RuntimeSettings {
     bool autoBacklight();
 
     void saveWifi(const String &ssid, const String &password);
+    bool    ntpEnabled();
+    bool    ntpSyncOnBoot();
+    uint8_t ntpSyncIntervalH();
+
     void saveNtp(const String &server, long offsetSec);
+    void saveNtpEnabled(bool enabled);
+    void saveNtpSyncOnBoot(bool enabled);
+    void saveNtpSyncIntervalH(uint8_t hours);
     void saveDeviceIdentity(const String &deviceName, const String &hostname);
     void saveWeatherCity(const String &city);
     void saveWindMetric(bool metric);

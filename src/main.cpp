@@ -27,6 +27,7 @@ static const unsigned long DATA_LOG_INTERVAL_MS     = DATA_LOG_INTERVAL_SEC * 10
 static unsigned long lastWeatherUpdate  = 0;
 static unsigned long lastLogWrite       = 0;
 static unsigned long lastSensorUpdate   = 0;
+static unsigned long lastNtpSync        = 0;
 static String activeWeatherCity;
 static bool sdReady   = false;
 static uint64_t sdSizeMb = 0;
@@ -174,8 +175,13 @@ void setup() {
 
     bootLabel(tft, LX, y, "NTP sync", BG, MUTED);
     bootPending(tft, SX, y, BG, AMBER);
-    bool ntp_ok = syncRTCfromNTP();
-    bootStatus(tft, SX, y, ntp_ok, BG);
+    bool ntp_ok = false;
+    if (RuntimeSettings::ntpEnabled() && RuntimeSettings::ntpSyncOnBoot()) {
+        ntp_ok = syncRTCfromNTP();
+    }
+    bootStatus(tft, SX, y, ntp_ok || !RuntimeSettings::ntpEnabled(), BG,
+               !RuntimeSettings::ntpEnabled() ? "DISABLED" : (ntp_ok ? "OK" : "FAIL"));
+    lastNtpSync = millis();
     y += ROW;
 
     bootLabel(tft, LX, y, "Geocoding", BG, MUTED);
@@ -248,6 +254,15 @@ void loop() {
     handleAPI();
     handlePCSerial();
     MQTT::handle();
+
+    uint8_t ntpIntervalH = RuntimeSettings::ntpSyncIntervalH();
+    if (ntpIntervalH > 0 && RuntimeSettings::ntpEnabled()) {
+        unsigned long ntpIntervalMs = (unsigned long)ntpIntervalH * 3600000UL;
+        if (now - lastNtpSync >= ntpIntervalMs) {
+            syncRTCfromNTP();
+            lastNtpSync = now;
+        }
+    }
 
     if (handleUI()) {
         drawUI(currentData, weatherData, currentUiStatus());

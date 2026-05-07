@@ -31,6 +31,9 @@ static float    _tgHumLo      = 30.0f;
 static bool     _tgGasLoEn    = false;
 static float    _tgGasLo      = 50.0f;
 static uint16_t _tgCooldownMin = 10;
+static bool    _ntpEnabled       = true;
+static bool    _ntpSyncOnBoot    = true;
+static uint8_t _ntpSyncIntervalH = 24;
 static bool   _staticIpEnabled = false;
 static String _staticIp        = "";
 static String _staticGateway   = "";
@@ -92,7 +95,10 @@ void reload() {
     _hostname = cleanHostname(prefs.getString("hostname", DEVICE_NAME), DEVICE_NAME);
     _weatherCity = prefs.getString("weather_city", WEATHER_CITY);
     _windMetric = prefs.getBool("wind_ms", WIND_UNIT_MS != 0);
-    _ntpOffsetSec = clampOffset(prefs.getLong("ntp_offset", NTP_OFFSET));
+    _ntpOffsetSec      = clampOffset(prefs.getLong("ntp_offset", NTP_OFFSET));
+    _ntpEnabled        = prefs.getBool("ntp_en",    true);
+    _ntpSyncOnBoot     = prefs.getBool("ntp_boot",  true);
+    _ntpSyncIntervalH  = (uint8_t)prefs.getUInt("ntp_intv_h", 24);
     _backlightPercent = clampPercent(prefs.getUInt("bl_pct", 100));
     _backlightInverted = prefs.getBool("bl_inv", false);
     _autoBacklight     = prefs.getBool("bl_auto", false);
@@ -191,6 +197,23 @@ void saveWifi(const String &ssid, const String &password) {
     if (password.length() > 0) prefs.putString("wifi_pass", password);
     prefs.end();
     reload();
+}
+
+bool    ntpEnabled()       { return _ntpEnabled; }
+bool    ntpSyncOnBoot()    { return _ntpSyncOnBoot; }
+uint8_t ntpSyncIntervalH() { return _ntpSyncIntervalH; }
+
+void saveNtpEnabled(bool enabled) {
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putBool("ntp_en", enabled); prefs.end(); reload();
+}
+void saveNtpSyncOnBoot(bool enabled) {
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putBool("ntp_boot", enabled); prefs.end(); reload();
+}
+void saveNtpSyncIntervalH(uint8_t hours) {
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putUInt("ntp_intv_h", hours); prefs.end(); reload();
 }
 
 void saveNtp(const String &server, long offsetSec) {

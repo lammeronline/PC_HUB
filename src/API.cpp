@@ -76,6 +76,8 @@ static HistoryAccumulator _acc30;
 static uint32_t _hist24Rev = 0;
 static uint32_t _hist7Rev = 0;
 static uint32_t _hist30Rev = 0;
+static uint64_t _sdTotalMb = 0;
+static uint64_t _sdUsedMb  = 0;
 static bool _otaFailed = false;
 static String _otaMessage;
 static bool _pendingRestart = false;
@@ -346,6 +348,11 @@ static void handleStatus() {
     system["auto_backlight"]       = RuntimeSettings::autoBacklight();
     system["led_mode"]             = RuntimeSettings::ledMode();
     system["pc_enabled"]           = RuntimeSettings::pcEnabled();
+    system["ntp_enabled"]          = RuntimeSettings::ntpEnabled();
+    system["ntp_sync_on_boot"]     = RuntimeSettings::ntpSyncOnBoot();
+    system["ntp_sync_interval_h"]  = RuntimeSettings::ntpSyncIntervalH();
+    system["sd_total_mb"]          = _sdTotalMb;
+    system["sd_used_mb"]           = _sdUsedMb;
 
     JsonObject mqtt = doc["mqtt"].to<JsonObject>();
     mqtt["enabled"]      = RuntimeSettings::mqttEnabled();
@@ -565,6 +572,17 @@ static void handleSettingsPost() {
 
     if (doc["pc_enabled"].is<bool>()) {
         RuntimeSettings::savePcEnabled(doc["pc_enabled"].as<bool>());
+    }
+
+    if (doc["ntp_enabled"].is<bool>()) {
+        RuntimeSettings::saveNtpEnabled(doc["ntp_enabled"].as<bool>());
+    }
+    if (doc["ntp_sync_on_boot"].is<bool>()) {
+        RuntimeSettings::saveNtpSyncOnBoot(doc["ntp_sync_on_boot"].as<bool>());
+    }
+    if (doc["ntp_sync_interval_h"].is<int>()) {
+        RuntimeSettings::saveNtpSyncIntervalH(
+            (uint8_t)constrain(doc["ntp_sync_interval_h"].as<int>(), 0, 255));
     }
 
     bool inApMode = _isApMode;
@@ -972,6 +990,10 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     _weather = weather;
     _pcData  = pcData;
     _sdReady = sdReady;
+    if (sdReady) {
+        _sdTotalMb = SD.cardSize() / (1024ULL * 1024ULL);
+        _sdUsedMb  = SD.usedBytes() / (1024ULL * 1024ULL);
+    }
 
     // Captive portal: каждая ОС проверяет свой URL — перенаправляем на главную
     auto cpRedirect = []() {
