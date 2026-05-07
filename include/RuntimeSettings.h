@@ -29,6 +29,8 @@ namespace RuntimeSettings {
     void saveDeviceIdentity(const String &deviceName, const String &hostname);
     void saveWeatherCity(const String &city);
     void saveWindMetric(bool metric);
+    bool weatherLogEnabled();
+    void saveWeatherLogEnabled(bool enabled);
     uint8_t ledMode();
     bool pcEnabled();
 

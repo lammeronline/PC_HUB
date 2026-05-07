@@ -11,6 +11,7 @@ static String _deviceName = DEVICE_NAME;
 static String _hostname = DEVICE_NAME;
 static String _weatherCity = WEATHER_CITY;
 static bool _windMetric = WIND_UNIT_MS != 0;
+static bool _weatherLogEnabled = true;
 static long _ntpOffsetSec = NTP_OFFSET;
 static uint8_t _backlightPercent = 100;
 static bool _backlightInverted = false;
@@ -95,6 +96,7 @@ void reload() {
     _hostname = cleanHostname(prefs.getString("hostname", DEVICE_NAME), DEVICE_NAME);
     _weatherCity = prefs.getString("weather_city", WEATHER_CITY);
     _windMetric = prefs.getBool("wind_ms", WIND_UNIT_MS != 0);
+    _weatherLogEnabled = prefs.getBool("wx_log_en", true);
     _ntpOffsetSec      = clampOffset(prefs.getLong("ntp_offset", NTP_OFFSET));
     _ntpEnabled        = prefs.getBool("ntp_en",    true);
     _ntpSyncOnBoot     = prefs.getBool("ntp_boot",  true);
@@ -253,6 +255,16 @@ void saveWindMetric(bool metric) {
     Preferences prefs;
     prefs.begin("pchub", false);
     prefs.putBool("wind_ms", metric);
+    prefs.end();
+    reload();
+}
+
+bool weatherLogEnabled() { return _weatherLogEnabled; }
+
+void saveWeatherLogEnabled(bool enabled) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("wx_log_en", enabled);
     prefs.end();
     reload();
 }

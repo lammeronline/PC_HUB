@@ -119,6 +119,7 @@ void setup() {
     sdSizeMb = initSDCard();
     sdReady  = sdSizeMb > 0;
     initLogger(sdReady);
+    initWeatherLogger(sdReady);
 
     bootLabel(tft, LX, y, "SD Card", BG, MUTED);
     if (sdSizeMb > 0) {
@@ -280,6 +281,8 @@ void loop() {
     if (now - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL_MS) {
         fetchWeather(weatherData);
         invalidateForecastUI();
+        if (RuntimeSettings::weatherLogEnabled())
+            logWeather(currentData, weatherData);
         lastWeatherUpdate = now;
     }
 

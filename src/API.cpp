@@ -1,5 +1,6 @@
 #include "API.h"
 #include "Config.h"
+#include "Version.h"
 #include "Logger.h"
 #include "RuntimeSettings.h"
 #include "Backlight.h"
@@ -318,13 +319,16 @@ static void handleStatus() {
     }
 
     JsonDocument doc;
-    doc["ok"]           = true;
-    doc["device"]       = RuntimeSettings::deviceName();
-    doc["ip"]           = WiFi.localIP().toString();
-    doc["hostname"]     = RuntimeSettings::hostname() + ".local";
-    doc["wind_unit"]    = RuntimeSettings::windMetric() ? "m/s" : "km/h";
-    doc["log_path"]     = readingsLogPath();
-    doc["logger_ready"] = loggerReady();
+    doc["ok"]                   = true;
+    doc["fw_version"]           = FW_VERSION;
+    doc["device"]               = RuntimeSettings::deviceName();
+    doc["ip"]                   = WiFi.localIP().toString();
+    doc["hostname"]             = RuntimeSettings::hostname() + ".local";
+    doc["wind_unit"]            = RuntimeSettings::windMetric() ? "m/s" : "km/h";
+    doc["log_path"]             = readingsLogPath();
+    doc["logger_ready"]         = loggerReady();
+    doc["weather_log_path"]     = weatherLogPath();
+    doc["weather_logger_ready"] = weatherLoggerReady();
 
     JsonObject system = doc["system"].to<JsonObject>();
     system["sd_ready"]             = _sdReady;
@@ -353,6 +357,7 @@ static void handleStatus() {
     system["ntp_sync_interval_h"]  = RuntimeSettings::ntpSyncIntervalH();
     system["sd_total_mb"]          = _sdTotalMb;
     system["sd_used_mb"]           = _sdUsedMb;
+    system["weather_log_enabled"]  = RuntimeSettings::weatherLogEnabled();
 
     JsonObject mqtt = doc["mqtt"].to<JsonObject>();
     mqtt["enabled"]      = RuntimeSettings::mqttEnabled();
@@ -448,6 +453,20 @@ static void handleLog() {
     File file = SD.open(readingsLogPath(), FILE_READ);
     if (!file) {
         server.send(500, "text/plain", "Failed to open log file");
+        return;
+    }
+    server.streamFile(file, "text/csv");
+    file.close();
+}
+
+static void handleWeatherLog() {
+    if (!_sdReady || !SD.exists(weatherLogPath())) {
+        server.send(404, "text/plain", "Weather log not found");
+        return;
+    }
+    File file = SD.open(weatherLogPath(), FILE_READ);
+    if (!file) {
+        server.send(500, "text/plain", "Failed to open weather log");
         return;
     }
     server.streamFile(file, "text/csv");
@@ -583,6 +602,10 @@ static void handleSettingsPost() {
     if (doc["ntp_sync_interval_h"].is<int>()) {
         RuntimeSettings::saveNtpSyncIntervalH(
             (uint8_t)constrain(doc["ntp_sync_interval_h"].as<int>(), 0, 255));
+    }
+
+    if (doc["weather_log_enabled"].is<bool>()) {
+        RuntimeSettings::saveWeatherLogEnabled(doc["weather_log_enabled"].as<bool>());
     }
 
     bool inApMode = _isApMode;
@@ -1015,7 +1038,8 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/settings", HTTP_POST, handleSettingsPost);
     server.on("/api/scan", HTTP_GET, handleScan);
     server.on("/api/history", HTTP_GET, handleHistory);
-    server.on("/api/log",    HTTP_GET,  handleLog);
+    server.on("/api/log",         HTTP_GET,  handleLog);
+    server.on("/api/weather_log", HTTP_GET,  handleWeatherLog);
     server.on("/api/ota",    HTTP_POST, handleOtaDone, handleOtaUpload);
     server.on("/api/sd/clear", HTTP_POST, handleSdClear);
     server.on("/api/reboot",        HTTP_POST, handleReboot);
