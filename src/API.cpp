@@ -3,8 +3,10 @@
 #include "Logger.h"
 #include "RuntimeSettings.h"
 #include "Backlight.h"
+#include "Telegram.h"
 #include "WebUI.h"
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <SD.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -257,6 +259,22 @@ static void handleStatus() {
     system["auto_backlight"]       = RuntimeSettings::autoBacklight();
     system["led_mode"]             = RuntimeSettings::ledMode();
     system["pc_enabled"]           = RuntimeSettings::pcEnabled();
+
+    JsonObject tg = doc["telegram"].to<JsonObject>();
+    tg["enabled"]      = RuntimeSettings::tgEnabled();
+    tg["has_token"]    = RuntimeSettings::tgToken().length() > 0;
+    tg["chat_id"]      = RuntimeSettings::tgChatId();
+    tg["cooldown_min"] = RuntimeSettings::tgCooldownMin();
+    tg["temp_hi_en"]   = RuntimeSettings::tgTempHiEn();
+    tg["temp_hi"]      = RuntimeSettings::tgTempHi();
+    tg["temp_lo_en"]   = RuntimeSettings::tgTempLoEn();
+    tg["temp_lo"]      = RuntimeSettings::tgTempLo();
+    tg["hum_hi_en"]    = RuntimeSettings::tgHumHiEn();
+    tg["hum_hi"]       = RuntimeSettings::tgHumHi();
+    tg["hum_lo_en"]    = RuntimeSettings::tgHumLoEn();
+    tg["hum_lo"]       = RuntimeSettings::tgHumLo();
+    tg["gas_lo_en"]    = RuntimeSettings::tgGasLoEn();
+    tg["gas_lo"]       = RuntimeSettings::tgGasLo();
 
     JsonObject sensor = doc["sensor"].to<JsonObject>();
     sensor["rtc_ok"]      = _sensor->rtc_ok;
@@ -654,6 +672,90 @@ static void handlePCPost() {
     server.send(200, "application/json", "{\"ok\":true}");
 }
 
+static void handleTelegramGet() {
+    JsonDocument doc;
+    doc["ok"]          = true;
+    doc["enabled"]     = RuntimeSettings::tgEnabled();
+    doc["has_token"]   = RuntimeSettings::tgToken().length() > 0;
+    doc["chat_id"]     = RuntimeSettings::tgChatId();
+    doc["cooldown_min"]= RuntimeSettings::tgCooldownMin();
+    doc["temp_hi_en"]  = RuntimeSettings::tgTempHiEn();
+    doc["temp_hi"]     = RuntimeSettings::tgTempHi();
+    doc["temp_lo_en"]  = RuntimeSettings::tgTempLoEn();
+    doc["temp_lo"]     = RuntimeSettings::tgTempLo();
+    doc["hum_hi_en"]   = RuntimeSettings::tgHumHiEn();
+    doc["hum_hi"]      = RuntimeSettings::tgHumHi();
+    doc["hum_lo_en"]   = RuntimeSettings::tgHumLoEn();
+    doc["hum_lo"]      = RuntimeSettings::tgHumLo();
+    doc["gas_lo_en"]   = RuntimeSettings::tgGasLoEn();
+    doc["gas_lo"]      = RuntimeSettings::tgGasLo();
+    sendJson(doc);
+}
+
+static void handleTelegramPost() {
+    String body = server.arg("plain");
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+
+    if (doc["enabled"].is<bool>())
+        RuntimeSettings::saveTgEnabled(doc["enabled"].as<bool>());
+
+    if (doc["chat_id"].is<const char*>() || doc["token"].is<const char*>()) {
+        String token  = doc["token"]   | "";
+        String chatId = doc["chat_id"] | RuntimeSettings::tgChatId();
+        chatId.trim();
+        RuntimeSettings::saveTgCredentials(token, chatId);
+    }
+
+    bool threshChanged =
+        doc["temp_hi_en"].is<bool>() || doc["temp_hi"].is<float>() ||
+        doc["temp_lo_en"].is<bool>() || doc["temp_lo"].is<float>() ||
+        doc["hum_hi_en"].is<bool>()  || doc["hum_hi"].is<float>()  ||
+        doc["hum_lo_en"].is<bool>()  || doc["hum_lo"].is<float>()  ||
+        doc["gas_lo_en"].is<bool>()  || doc["gas_lo"].is<float>()  ||
+        doc["cooldown_min"].is<int>();
+
+    if (threshChanged) {
+        RuntimeSettings::saveTgThresholds(
+            doc["temp_hi_en"] | RuntimeSettings::tgTempHiEn(),
+            doc["temp_hi"]    | RuntimeSettings::tgTempHi(),
+            doc["temp_lo_en"] | RuntimeSettings::tgTempLoEn(),
+            doc["temp_lo"]    | RuntimeSettings::tgTempLo(),
+            doc["hum_hi_en"]  | RuntimeSettings::tgHumHiEn(),
+            doc["hum_hi"]     | RuntimeSettings::tgHumHi(),
+            doc["hum_lo_en"]  | RuntimeSettings::tgHumLoEn(),
+            doc["hum_lo"]     | RuntimeSettings::tgHumLo(),
+            doc["gas_lo_en"]  | RuntimeSettings::tgGasLoEn(),
+            doc["gas_lo"]     | RuntimeSettings::tgGasLo(),
+            (uint16_t)(doc["cooldown_min"] | (int)RuntimeSettings::tgCooldownMin())
+        );
+    }
+
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
+static void handleTelegramTest() {
+    if (RuntimeSettings::tgToken().isEmpty() || RuntimeSettings::tgChatId().isEmpty()) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"token or chat_id not set\"}");
+        return;
+    }
+    bool ok = Telegram::sendMessage("PCHUB test message — bot is working.");
+    server.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"queue full\"}");
+}
+
+static void handleFactoryReset() {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.clear();
+    prefs.end();
+    server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+    delay(300);
+    ESP.restart();
+}
+
 static void handleRoot() {
     server.sendHeader("Cache-Control", "no-store");
     server.send_P(200, "text/html; charset=utf-8", WEB_INDEX);
@@ -695,8 +797,12 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/log",    HTTP_GET,  handleLog);
     server.on("/api/ota",    HTTP_POST, handleOtaDone, handleOtaUpload);
     server.on("/api/sd/clear", HTTP_POST, handleSdClear);
-    server.on("/api/reboot", HTTP_POST, handleReboot);
-    server.on("/api/pc",     HTTP_POST, handlePCPost);
+    server.on("/api/reboot",        HTTP_POST, handleReboot);
+    server.on("/api/pc",            HTTP_POST, handlePCPost);
+    server.on("/api/telegram",      HTTP_GET,  handleTelegramGet);
+    server.on("/api/telegram",      HTTP_POST, handleTelegramPost);
+    server.on("/api/telegram/test",  HTTP_POST, handleTelegramTest);
+    server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
     server.onNotFound([]() {
         server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
     });

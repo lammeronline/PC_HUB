@@ -17,6 +17,20 @@ static bool _backlightInverted = false;
 static bool _autoBacklight = false;
 static uint8_t _ledMode = 0;
 static bool _pcEnabled = true;
+static bool     _tgEnabled     = false;
+static String   _tgToken;
+static String   _tgChatId;
+static bool     _tgTempHiEn   = false;
+static float    _tgTempHi     = 30.0f;
+static bool     _tgTempLoEn   = false;
+static float    _tgTempLo     = 15.0f;
+static bool     _tgHumHiEn    = false;
+static float    _tgHumHi      = 75.0f;
+static bool     _tgHumLoEn    = false;
+static float    _tgHumLo      = 30.0f;
+static bool     _tgGasLoEn    = false;
+static float    _tgGasLo      = 50.0f;
+static uint16_t _tgCooldownMin = 10;
 
 static long clampOffset(long offsetSec) {
     if (offsetSec < -12L * 3600L) return -12L * 3600L;
@@ -71,6 +85,20 @@ void reload() {
     _autoBacklight     = prefs.getBool("bl_auto", false);
     _ledMode = prefs.getUChar("led_mode", 0);
     _pcEnabled = prefs.getBool("pc_enabled", true);
+    _tgEnabled    = prefs.getBool("tg_en", false);
+    _tgToken      = prefs.getString("tg_token", "");
+    _tgChatId     = prefs.getString("tg_chat_id", "");
+    _tgTempHiEn   = prefs.getBool("tg_thi_en", false);
+    _tgTempHi     = prefs.getFloat("tg_thi", 30.0f);
+    _tgTempLoEn   = prefs.getBool("tg_tlo_en", false);
+    _tgTempLo     = prefs.getFloat("tg_tlo", 15.0f);
+    _tgHumHiEn    = prefs.getBool("tg_hhi_en", false);
+    _tgHumHi      = prefs.getFloat("tg_hhi", 75.0f);
+    _tgHumLoEn    = prefs.getBool("tg_hlo_en", false);
+    _tgHumLo      = prefs.getFloat("tg_hlo", 30.0f);
+    _tgGasLoEn    = prefs.getBool("tg_glo_en", false);
+    _tgGasLo      = prefs.getFloat("tg_glo", 50.0f);
+    _tgCooldownMin = (uint16_t)prefs.getUInt("tg_cooldown", 10);
     prefs.end();
 }
 
@@ -217,6 +245,57 @@ void savePcEnabled(bool enabled) {
     Preferences prefs;
     prefs.begin("pchub", false);
     prefs.putBool("pc_enabled", enabled);
+    prefs.end();
+    reload();
+}
+
+bool     tgEnabled()      { return _tgEnabled; }
+String   tgToken()        { return _tgToken; }
+String   tgChatId()       { return _tgChatId; }
+bool     tgTempHiEn()     { return _tgTempHiEn; }
+float    tgTempHi()       { return _tgTempHi; }
+bool     tgTempLoEn()     { return _tgTempLoEn; }
+float    tgTempLo()       { return _tgTempLo; }
+bool     tgHumHiEn()      { return _tgHumHiEn; }
+float    tgHumHi()        { return _tgHumHi; }
+bool     tgHumLoEn()      { return _tgHumLoEn; }
+float    tgHumLo()        { return _tgHumLo; }
+bool     tgGasLoEn()      { return _tgGasLoEn; }
+float    tgGasLo()        { return _tgGasLo; }
+uint16_t tgCooldownMin()  { return _tgCooldownMin; }
+
+void saveTgEnabled(bool enabled) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("tg_en", enabled);
+    prefs.end();
+    reload();
+}
+
+void saveTgCredentials(const String &token, const String &chatId) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    if (token.length() > 0) prefs.putString("tg_token", token);
+    prefs.putString("tg_chat_id", chatId);
+    prefs.end();
+    reload();
+}
+
+void saveTgThresholds(bool tempHiEn, float tempHi,
+                      bool tempLoEn, float tempLo,
+                      bool humHiEn,  float humHi,
+                      bool humLoEn,  float humLo,
+                      bool gasLoEn,  float gasLo,
+                      uint16_t cooldownMin) {
+    if (cooldownMin < 1) cooldownMin = 1;
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("tg_thi_en", tempHiEn); prefs.putFloat("tg_thi", tempHi);
+    prefs.putBool("tg_tlo_en", tempLoEn); prefs.putFloat("tg_tlo", tempLo);
+    prefs.putBool("tg_hhi_en", humHiEn);  prefs.putFloat("tg_hhi", humHi);
+    prefs.putBool("tg_hlo_en", humLoEn);  prefs.putFloat("tg_hlo", humLo);
+    prefs.putBool("tg_glo_en", gasLoEn);  prefs.putFloat("tg_glo", gasLo);
+    prefs.putUInt("tg_cooldown", cooldownMin);
     prefs.end();
     reload();
 }

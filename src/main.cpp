@@ -11,6 +11,7 @@
 #include "PCAgent.h"
 #include "RuntimeSettings.h"
 #include "Backlight.h"
+#include "Telegram.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SensorData  currentData;
@@ -149,6 +150,7 @@ void setup() {
     // Finish init
     updateSensors(currentData);
     initAPI(&currentData, &weatherData, &currentPC, sdReady);
+    Telegram::begin(&currentData, &weatherData);
     initPCAgent(&currentPC);
     initPCDisplay(&currentPC);
     logReading(currentData, weatherData);
