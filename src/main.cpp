@@ -181,6 +181,8 @@ void loop() {
     if (now - lastSensorUpdate >= SENSOR_INTERVAL_MS) {
         updateSensors(currentData);
         updateLED(currentData.temperature, currentData.humidity, currentData.gas, currentData.bme_ok);
+        if (RuntimeSettings::autoBacklight() && currentData.rtc_ok)
+            Backlight::autoUpdate(currentData.timeStr);
         drawUI(currentData, weatherData, currentUiStatus());
         lastSensorUpdate = now;
     }

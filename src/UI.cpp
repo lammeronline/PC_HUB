@@ -27,6 +27,10 @@ static const uint16_t C_AMBER  = 0xFDC5; // #ffbd2e
 static const uint16_t C_ORANGE = 0xFC85; // #ff922e
 static const uint16_t C_RED    = 0xFAAB; // #ff4f5f
 static const uint16_t C_PILL   = 0x1948; // #1a2a44
+static const uint16_t C_SKY   = 0x055F; // #00A8F8 sky blue (cold)
+static const uint16_t C_BLUE  = 0x233B; // #2064D8 blue (colder)
+static const uint16_t C_DBLUE = 0x1195; // #1030A8 deep blue (frost)
+static const uint16_t C_YELL  = 0xFF20; // #F8E400 yellow (mild plus)
 
 static const char* DOW_NAMES[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
 
@@ -49,6 +53,7 @@ private:
         int weatherCode = -999;
         bool weatherIsDay = true;
         float weatherTemp = -999.0f;
+        float weatherWind = -999.0f;
 
         float cpuTemp = -1, cpuLoad = -1;
         float gpuTemp = -1, gpuLoad = -1;
@@ -84,27 +89,42 @@ private:
     void drawStatusIcon(int x, int y, uint16_t col, uint8_t kind) {
         tft->fillRect(x, y, 14, 14, C_HEADER);
         switch (kind) {
-            case 0: // wifi
-                tft->fillCircle(x + 7, y + 10, 1, col);
-                tft->drawLine(x + 4, y + 9, x + 10, y + 9, col);
-                tft->drawLine(x + 3, y + 7, x + 11, y + 7, col);
-                tft->drawLine(x + 5, y + 5, x + 9, y + 5, col);
+            case 0: { // WiFi — circles with lower half masked → clean upper arcs
+                int cx = x+7, cy = y+7;
+                tft->drawCircle(cx, cy, 6, col);
+                tft->drawCircle(cx, cy, 4, col);
+                tft->drawCircle(cx, cy, 2, col);
+                tft->fillRect(x,    cy, 14, 7, C_HEADER);      // mask centre row and below
+                tft->fillRect(x,    y,   1,  7, C_HEADER);     // mask left overflow col
+                tft->fillRect(x+13, y,   1,  7, C_HEADER);     // mask right overflow col
+                tft->fillCircle(cx, y+10, 2, col);              // dot
                 break;
-            case 1: // sd
-                tft->fillRect(x + 4, y + 3, 6, 8, col);
-                tft->fillRect(x + 5, y + 5, 4, 1, C_HEADER);
-                tft->fillRect(x + 6, y + 8, 2, 2, C_HEADER);
+            }
+            case 1: { // SD card — body with corner notch + contact grooves
+                tft->fillRect(x+2, y+1, 9, 12, col);
+                tft->fillTriangle(x+2, y+1, x+5, y+1, x+2, y+4, C_HEADER);
+                for (int i = 0; i < 4; i++) tft->fillRect(x+3+i*2, y+7, 1, 5, C_HEADER);
                 break;
-            case 2: // api
-                tft->fillRect(x + 6, y + 3, 2, 8, col);
-                tft->fillRect(x + 3, y + 6, 8, 2, col);
+            }
+            case 2: { // API — broadcast antenna with spreading arms
+                tft->fillCircle(x+7, y+3, 2, col);
+                tft->drawLine(x+7, y+5, x+7, y+13, col);
+                tft->drawLine(x+3, y+10, x+7, y+6, col);
+                tft->drawLine(x+11, y+10, x+7, y+6, col);
+                tft->drawLine(x+1, y+13, x+7, y+7, col);
+                tft->drawLine(x+13, y+13, x+7, y+7, col);
                 break;
-            default: // log
-                tft->fillRect(x + 4, y + 3, 6, 8, col);
-                tft->fillRect(x + 5, y + 5, 4, 1, C_HEADER);
-                tft->fillRect(x + 5, y + 7, 4, 1, C_HEADER);
-                tft->fillRect(x + 5, y + 9, 3, 1, C_HEADER);
+            }
+            default: { // LOG — document with folded corner + text lines
+                tft->fillRoundRect(x+1, y+1, 10, 12, 2, col);
+                tft->fillTriangle(x+8, y+1, x+11, y+1, x+11, y+4, C_HEADER);
+                tft->drawLine(x+8, y+1, x+11, y+4, col);
+                tft->fillRect(x+3, y+5, 5, 1, C_HEADER);
+                tft->fillRect(x+3, y+7, 5, 1, C_HEADER);
+                tft->fillRect(x+3, y+9, 5, 1, C_HEADER);
+                tft->fillRect(x+3, y+11, 3, 1, C_HEADER);
                 break;
+            }
         }
     }
 
@@ -126,6 +146,21 @@ private:
         if (v < 26.0f) return C_GREEN;
         if (v < 30.0f) return C_AMBER;
         return C_RED;
+    }
+
+    // Outdoor weather temperature: cold = cyan→blue, warm = yellow→red
+    uint16_t weatherTempColor(float v) {
+        if (v >= 0.0f) {
+            if (v <  8.0f) return C_YELL;
+            if (v < 18.0f) return C_AMBER;
+            if (v < 28.0f) return C_ORANGE;
+            return C_RED;
+        } else {
+            if (v > -5.0f)  return C_CYAN;
+            if (v > -15.0f) return C_SKY;
+            if (v > -25.0f) return C_BLUE;
+            return C_DBLUE;
+        }
     }
 
     uint16_t humColor(float v) {
@@ -225,36 +260,38 @@ private:
         tft->fillCircle(cx + R / 3, cy - R / 4, R - 2, C_PANEL);
     }
 
-    void drawWeatherIcon(int cx, int cy, int code, bool isDay, int R = 9) {
+    // R = fill/clear radius; dR = draw radius (defaults to R, can be larger for bigger icon in same clear zone)
+    void drawWeatherIcon(int cx, int cy, int code, bool isDay, int R = 9, int dR = -1) {
+        if (dR < 0) dR = R;
         tft->fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4, C_PANEL);
-        if (code < 0) { tft->drawLine(cx - R/2, cy, cx + R/2, cy, C_MUTED); return; }
+        if (code < 0) { tft->drawLine(cx - dR/2, cy, cx + dR/2, cy, C_MUTED); return; }
         if (code == 0) {
-            if (isDay) drawSun(cx, cy, R);
-            else       drawMoon(cx, cy, R);
+            if (isDay) drawSun(cx, cy, dR);
+            else       drawMoon(cx, cy, dR);
             return;
         }
         if (code <= 2) {
-            if (isDay) drawSun(cx - R/2, cy - R/3, R/2 + 3);
-            else       drawMoon(cx - R/2, cy - R/3, R/2 + 3);
+            if (isDay) drawSun(cx - dR/2, cy - dR/3, dR/2 + 3);
+            else       drawMoon(cx - dR/2, cy - dR/3, dR/2 + 3);
         }
-        int cR1 = R * 2 / 3, cR2 = R * 5 / 9, cOff = R / 3;
+        int cR1 = dR * 2 / 3, cR2 = dR * 5 / 9, cOff = dR / 3;
         auto cloud = [&](int bx, int by) {
             tft->fillCircle(bx - cOff, by, cR1, C_MUTED);
             tft->fillCircle(bx + cOff, by - 1, cR2, C_MUTED);
-            tft->fillRect(bx - R, by, R*2, R*2/3, C_MUTED);
+            tft->fillRect(bx - dR, by, dR*2, dR*2/3, C_MUTED);
         };
-        if (code <= 3) { cloud(cx, cy + R/9); return; }
-        cloud(cx, cy - R*2/9);
-        int py = cy + R*2/3, dx_cloud = R * 5 / 9;
-        if (code <= 48) { for (int i=1; i<=3; i++) tft->drawLine(cx-R+i, py+i*R/3, cx+R-i, py+i*R/3, C_MUTED); }
-        else if (code <= 67) { for (int i=-1; i<=1; i++) tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+R*7/9, C_CYAN); }
-        else if (code <= 77) { for (int i=-1; i<=1; i++) tft->fillCircle(cx+i*dx_cloud, py+R*4/9, 2, TFT_WHITE); }
-        else if (code <= 82) { for (int i=-2; i<=1; i++) tft->fillRect(cx+i*dx_cloud+2, py, 2, R*7/9, C_CYAN); }
-        else if (code <= 86) { for (int i=-1; i<=1; i++) { if (i==0) tft->fillCircle(cx, py+R*4/9, 2, TFT_WHITE); else tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+R*7/9, C_CYAN); } }
+        if (code <= 3) { cloud(cx, cy + dR/9); return; }
+        cloud(cx, cy - dR*2/9);
+        int py = cy + dR*2/3, dx_cloud = dR * 5 / 9;
+        if (code <= 48) { for (int i=1; i<=3; i++) tft->drawLine(cx-dR+i, py+i*dR/3, cx+dR-i, py+i*dR/3, C_MUTED); }
+        else if (code <= 67) { for (int i=-1; i<=1; i++) tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); }
+        else if (code <= 77) { for (int i=-1; i<=1; i++) tft->fillCircle(cx+i*dx_cloud, py+dR*4/9, 2, TFT_WHITE); }
+        else if (code <= 82) { for (int i=-2; i<=1; i++) tft->fillRect(cx+i*dx_cloud+2, py, 2, dR*7/9, C_CYAN); }
+        else if (code <= 86) { for (int i=-1; i<=1; i++) { if (i==0) tft->fillCircle(cx, py+dR*4/9, 2, TFT_WHITE); else tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); } }
         else {
-            int bx = cx+R/5, by = py;
-            tft->fillTriangle(bx, by, bx-R/2, by+R/2, bx+R/5, by+R/2, C_AMBER);
-            tft->fillTriangle(bx-R/5, by+R*4/9, bx-R*2/3, by+R, bx+R/3, by+R*4/9, C_AMBER);
+            int bx = cx+dR/5, by = py;
+            tft->fillTriangle(bx, by, bx-dR/2, by+dR/2, bx+dR/5, by+dR/2, C_AMBER);
+            tft->fillTriangle(bx-dR/5, by+dR*4/9, bx-dR*2/3, by+dR, bx+dR/3, by+dR*4/9, C_AMBER);
         }
     }
 
@@ -330,59 +367,69 @@ private:
         
         int currentCode = weather.ok ? weather.weather_code : -1;
         bool currentIsDay = weather.ok ? weather.is_day : true;
-        bool weatherUpdated = contentDirty || currentCode != cache.weatherCode ||
-                              currentIsDay != cache.weatherIsDay ||
-                              weather.temperature != cache.weatherTemp;
-        if (weatherUpdated) {
-            cache.weatherCode = currentCode;
-            cache.weatherTemp = weather.temperature;
-            cache.weatherIsDay = currentIsDay;
+        bool weatherUpdated = contentDirty
+            || currentCode        != cache.weatherCode
+            || currentIsDay       != cache.weatherIsDay
+            || weather.temperature != cache.weatherTemp
+            || weather.wind_speed  != cache.weatherWind;
 
+        if (weatherUpdated) {
+            cache.weatherCode  = currentCode;
+            cache.weatherTemp  = weather.temperature;
+            cache.weatherIsDay = currentIsDay;
+            cache.weatherWind  = weather.wind_speed;
+
+            // Очищаем правую зону, восстанавливаем бордер
             tft->fillRoundRect(206, CY + 2, 106, 64, 7, C_PANEL);
-            tft->drawRoundRect(8, CY + 2, SW - 16, 64, 7, C_STROKE);
+            tft->drawRoundRect(8,   CY + 2, SW - 16, 64, 7, C_STROKE);
             tft->drawLine(209, CY + 10, 209, CY + 56, C_STROKE);
             tft->fillRect(208, CY + 3, 102, 2, C_CYAN);
 
-            tft->setTextPadding(0); // сброс унаследованного padding от часов
+            // Иконка рисуется первой — её fillRect может задеть бордер,
+            // поэтому бордер и разделитель восстанавливаем после
+            // cx=289, R=11 → fillRect(267,CY+19,44,44) — правый край 311=бордер
+            drawWeatherIcon(289, CY + 41, currentCode, currentIsDay, 11, 14);
+            tft->drawRoundRect(8, CY + 2, SW - 16, 64, 7, C_STROKE);
+            tft->drawLine(209, CY + 10, 209, CY + 56, C_STROKE);
+
+            // Город по центру правой зоны (font 2, рисуем поверх иконки — не пересекаются по Y)
+            String city = RuntimeSettings::weatherCity();
             tft->setTextFont(2);
             tft->setTextColor(C_MUTED, C_PANEL);
             tft->setTextDatum(MC_DATUM);
-            String city = RuntimeSettings::weatherCity();
-            tft->drawString(city.c_str(), 255, CY + 14);
+            tft->setTextPadding(96);
+            tft->drawString(city.c_str(), 261, CY + 13);
+
+            // Левый столбец — температура + ветер сгруппированы внизу
+            // padding=54 → текст до x=267, иконка fillRect от x=267: не пересекаются
+            const int tx = 213;
+            tft->setTextDatum(TL_DATUM);
+            tft->setTextPadding(54);
 
             tft->setTextFont(4);
-            tft->setTextColor(C_AMBER, C_PANEL);
-            tft->setTextDatum(MR_DATUM);
-            tft->setTextPadding(0);
-
             if (weather.ok) {
-                char tNum[16];
+                char tNum[8];
                 snprintf(tNum, sizeof(tNum), "%+.0f", weather.temperature);
-                const int tempRight = SW - 62;
-                tft->drawString(tNum, tempRight, CY + 37);
-
-                int circX = tempRight + 4;
-                int circY = CY + 29;
-                tft->drawCircle(circX, circY, 3, C_AMBER);
-                tft->drawCircle(circX, circY, 2, C_AMBER);
+                uint16_t tc = weatherTempColor(weather.temperature);
+                tft->setTextColor(tc, C_PANEL);
+                tft->drawString(tNum, tx, CY + 24);
+                int tw = tft->textWidth(tNum, 4);
+                tft->fillCircle(tx + tw + 5, CY + 29, 4, tc);
+                tft->fillCircle(tx + tw + 5, CY + 29, 2, C_PANEL);
             } else {
-                tft->drawString("--", SW - 84, CY + 37);
+                tft->setTextColor(C_MUTED, C_PANEL);
+                tft->drawString("--", tx, CY + 24);
             }
+
+            tft->setTextFont(1);
+            tft->setTextColor(C_CYAN, C_PANEL);
+            if (weather.ok) fmtWindSpeed(line, sizeof(line), weather.wind_speed);
+            else            snprintf(line, sizeof(line), "--");
+            tft->drawString(line, tx, CY + 52);
+
+            tft->setTextPadding(0);
+            tft->setTextDatum(TL_DATUM);
         }
-
-        // Скорость ветра — всегда, но ПЕРЕД иконкой чтобы не срезать лучи
-        tft->setTextDatum(MR_DATUM);
-        tft->setTextPadding(48);
-        if (weather.ok) fmtWindSpeed(line, sizeof(line), weather.wind_speed);
-        else            snprintf(line, sizeof(line), "--");
-        tft->setTextFont(2);
-        tft->setTextColor(C_CYAN, C_PANEL);
-        tft->drawString(line, 272, CY + 53);
-        tft->setTextPadding(0);
-        tft->setTextDatum(TL_DATUM);
-
-        // Иконка каждый кадр — поверх фона текста скорости ветра
-        drawWeatherIcon(SW - 29, CY + 40, currentCode, currentIsDay, 10);
 
         // 2. Блок ПОКАЗАНИЙ
         if (pcOn) {
@@ -617,14 +664,27 @@ private:
             const DayForecast &d = weather.forecast[i];
             bool today = (i == 0);
             drawCard(8, y, SW - 16, ROW_H - 2, C_STROKE);
-            drawText(18, y + 4, 1, today ? C_AMBER : C_CYAN, d.date, 38, C_PANEL);
-            drawText(58, y + 4, 1, today ? C_AMBER : C_CYAN, d.day, 24, C_PANEL);
-            snprintf(line, sizeof(line), "%+.0f/%+.0f", d.temp_max, d.temp_min);
-            drawText(86, y + 4, 1, C_TEXT, line, 52, C_PANEL);
+            if (today) tft->drawRoundRect(8, y, SW - 16, ROW_H - 2, 7, C_AMBER);
+            drawText(18, y + 6, 1, C_CYAN, d.date, 38, C_PANEL);
+            drawText(58, y + 6, 1, C_CYAN, d.day, 24, C_PANEL);
+            {
+                char maxS[8], minS[8];
+                snprintf(maxS, sizeof(maxS), "%+.0f", d.temp_max);
+                snprintf(minS, sizeof(minS), "%+.0f", d.temp_min);
+                tft->setTextFont(1); tft->setTextDatum(TL_DATUM); tft->setTextPadding(0);
+                tft->setTextColor(weatherTempColor(d.temp_max), C_PANEL);
+                tft->drawString(maxS, 86, y + 6);
+                int mw = tft->textWidth(maxS, 1);
+                tft->setTextColor(C_MUTED, C_PANEL);
+                tft->drawString("/", 86 + mw, y + 6);
+                int sw = tft->textWidth("/", 1);
+                tft->setTextColor(weatherTempColor(d.temp_min), C_PANEL);
+                tft->drawString(minS, 86 + mw + sw, y + 6);
+            }
             drawWeatherIcon(148, y + 10, d.weather_code, true, 4);
-            drawText(166, y + 4, 1, C_MUTED, weatherDesc(d.weather_code), 62, C_PANEL);
+            drawText(166, y + 6, 1, C_MUTED, weatherDesc(d.weather_code), 62, C_PANEL);
             fmtWindSpeed(line, sizeof(line), d.wind_speed);
-            drawText(232, y + 4, 1, C_CYAN, line, 70, C_PANEL);
+            drawText(232, y + 6, 1, C_CYAN, line, 70, C_PANEL);
         }
         forecastDirty = false;
     }

@@ -15,6 +15,7 @@ namespace RuntimeSettings {
     long ntpOffsetSec();
     uint8_t backlightPercent();
     bool backlightInverted();
+    bool autoBacklight();
 
     void saveWifi(const String &ssid, const String &password);
     void saveNtp(const String &server, long offsetSec);
@@ -26,6 +27,7 @@ namespace RuntimeSettings {
 
     void saveBacklight(uint8_t percent);
     void saveBacklightInverted(bool inverted);
+    void saveAutoBacklight(bool enabled);
     void saveLedMode(uint8_t mode);
     void savePcEnabled(bool enabled);
 }

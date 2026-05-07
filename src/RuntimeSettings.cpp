@@ -14,6 +14,7 @@ static bool _windMetric = WIND_UNIT_MS != 0;
 static long _ntpOffsetSec = NTP_OFFSET;
 static uint8_t _backlightPercent = 100;
 static bool _backlightInverted = false;
+static bool _autoBacklight = false;
 static uint8_t _ledMode = 0;
 static bool _pcEnabled = true;
 
@@ -67,6 +68,7 @@ void reload() {
     _ntpOffsetSec = clampOffset(prefs.getLong("ntp_offset", NTP_OFFSET));
     _backlightPercent = clampPercent(prefs.getUInt("bl_pct", 100));
     _backlightInverted = prefs.getBool("bl_inv", false);
+    _autoBacklight     = prefs.getBool("bl_auto", false);
     _ledMode = prefs.getUChar("led_mode", 0);
     _pcEnabled = prefs.getBool("pc_enabled", true);
     prefs.end();
@@ -114,6 +116,10 @@ uint8_t backlightPercent() {
 
 bool backlightInverted() {
     return _backlightInverted;
+}
+
+bool autoBacklight() {
+    return _autoBacklight;
 }
 
 uint8_t ledMode() {
@@ -186,6 +192,14 @@ void saveBacklightInverted(bool inverted) {
     Preferences prefs;
     prefs.begin("pchub", false);
     prefs.putBool("bl_inv", inverted);
+    prefs.end();
+    reload();
+}
+
+void saveAutoBacklight(bool enabled) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("bl_auto", enabled);
     prefs.end();
     reload();
 }

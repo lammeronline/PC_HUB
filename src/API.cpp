@@ -254,6 +254,7 @@ static void handleStatus() {
     system["ntp_offset_sec"]       = RuntimeSettings::ntpOffsetSec();
     system["backlight_pct"]        = Backlight::brightness();
     system["backlight_inverted"]   = RuntimeSettings::backlightInverted();
+    system["auto_backlight"]       = RuntimeSettings::autoBacklight();
     system["led_mode"]             = RuntimeSettings::ledMode();
     system["pc_enabled"]           = RuntimeSettings::pcEnabled();
 
@@ -425,6 +426,13 @@ static void handleSettingsPost() {
     if (doc["backlight_inverted"].is<bool>()) {
         RuntimeSettings::saveBacklightInverted(doc["backlight_inverted"].as<bool>());
         Backlight::apply(RuntimeSettings::backlightPercent());
+        backlightChanged = true;
+    }
+
+    if (doc["auto_backlight"].is<bool>()) {
+        RuntimeSettings::saveAutoBacklight(doc["auto_backlight"].as<bool>());
+        if (!RuntimeSettings::autoBacklight())
+            Backlight::apply(RuntimeSettings::backlightPercent());
         backlightChanged = true;
     }
 
