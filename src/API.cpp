@@ -4,6 +4,7 @@
 #include "RuntimeSettings.h"
 #include "Backlight.h"
 #include "Telegram.h"
+#include "MQTT.h"
 #include "WebUI.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -259,6 +260,15 @@ static void handleStatus() {
     system["auto_backlight"]       = RuntimeSettings::autoBacklight();
     system["led_mode"]             = RuntimeSettings::ledMode();
     system["pc_enabled"]           = RuntimeSettings::pcEnabled();
+
+    JsonObject mqtt = doc["mqtt"].to<JsonObject>();
+    mqtt["enabled"]      = RuntimeSettings::mqttEnabled();
+    mqtt["connected"]    = MQTT::connected();
+    mqtt["broker"]       = RuntimeSettings::mqttBroker();
+    mqtt["port"]         = RuntimeSettings::mqttPort();
+    mqtt["prefix"]       = RuntimeSettings::mqttPrefix();
+    mqtt["interval_sec"] = RuntimeSettings::mqttIntervalSec();
+    mqtt["has_user"]     = RuntimeSettings::mqttUser().length() > 0;
 
     JsonObject tg = doc["telegram"].to<JsonObject>();
     tg["enabled"]      = RuntimeSettings::tgEnabled();
@@ -746,6 +756,42 @@ static void handleTelegramTest() {
     server.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"queue full\"}");
 }
 
+static void handleMqttGet() {
+    JsonDocument doc;
+    doc["ok"]          = true;
+    doc["enabled"]     = RuntimeSettings::mqttEnabled();
+    doc["connected"]   = MQTT::connected();
+    doc["broker"]      = RuntimeSettings::mqttBroker();
+    doc["port"]        = RuntimeSettings::mqttPort();
+    doc["user"]        = RuntimeSettings::mqttUser();
+    doc["prefix"]      = RuntimeSettings::mqttPrefix();
+    doc["interval_sec"]= RuntimeSettings::mqttIntervalSec();
+    sendJson(doc);
+}
+
+static void handleMqttPost() {
+    String body = server.arg("plain");
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+    if (doc["enabled"].is<bool>())
+        RuntimeSettings::saveMqttEnabled(doc["enabled"].as<bool>());
+
+    if (doc["broker"].is<const char*>()) {
+        String broker   = doc["broker"]   | RuntimeSettings::mqttBroker();
+        uint16_t port   = doc["port"]     | (int)RuntimeSettings::mqttPort();
+        String user     = doc["user"]     | RuntimeSettings::mqttUser();
+        String pass     = doc["password"] | String("");
+        String prefix   = doc["prefix"]   | RuntimeSettings::mqttPrefix();
+        uint16_t intv   = doc["interval_sec"] | (int)RuntimeSettings::mqttIntervalSec();
+        broker.trim();
+        RuntimeSettings::saveMqttSettings(broker, port, user, pass, prefix, intv);
+    }
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleFactoryReset() {
     Preferences prefs;
     prefs.begin("pchub", false);
@@ -803,6 +849,8 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/telegram",      HTTP_POST, handleTelegramPost);
     server.on("/api/telegram/test",  HTTP_POST, handleTelegramTest);
     server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
+    server.on("/api/mqtt",          HTTP_GET,  handleMqttGet);
+    server.on("/api/mqtt",          HTTP_POST, handleMqttPost);
     server.onNotFound([]() {
         server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
     });

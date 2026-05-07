@@ -31,6 +31,13 @@ static float    _tgHumLo      = 30.0f;
 static bool     _tgGasLoEn    = false;
 static float    _tgGasLo      = 50.0f;
 static uint16_t _tgCooldownMin = 10;
+static bool     _mqttEnabled    = false;
+static String   _mqttBroker;
+static uint16_t _mqttPort       = 1883;
+static String   _mqttUser;
+static String   _mqttPassword;
+static String   _mqttPrefix     = "pchub";
+static uint16_t _mqttIntervalSec = 60;
 
 static long clampOffset(long offsetSec) {
     if (offsetSec < -12L * 3600L) return -12L * 3600L;
@@ -98,7 +105,14 @@ void reload() {
     _tgHumLo      = prefs.getFloat("tg_hlo", 30.0f);
     _tgGasLoEn    = prefs.getBool("tg_glo_en", false);
     _tgGasLo      = prefs.getFloat("tg_glo", 50.0f);
-    _tgCooldownMin = (uint16_t)prefs.getUInt("tg_cooldown", 10);
+    _tgCooldownMin   = (uint16_t)prefs.getUInt("tg_cooldown", 10);
+    _mqttEnabled     = prefs.getBool("mqtt_en", false);
+    _mqttBroker      = prefs.getString("mqtt_broker", "");
+    _mqttPort        = (uint16_t)prefs.getUInt("mqtt_port", 1883);
+    _mqttUser        = prefs.getString("mqtt_user", "");
+    _mqttPassword    = prefs.getString("mqtt_pass", "");
+    _mqttPrefix      = prefs.getString("mqtt_prefix", "pchub");
+    _mqttIntervalSec = (uint16_t)prefs.getUInt("mqtt_intv", 60);
     prefs.end();
 }
 
@@ -263,6 +277,39 @@ float    tgHumLo()        { return _tgHumLo; }
 bool     tgGasLoEn()      { return _tgGasLoEn; }
 float    tgGasLo()        { return _tgGasLo; }
 uint16_t tgCooldownMin()  { return _tgCooldownMin; }
+
+bool     mqttEnabled()     { return _mqttEnabled; }
+String   mqttBroker()      { return _mqttBroker; }
+uint16_t mqttPort()        { return _mqttPort; }
+String   mqttUser()        { return _mqttUser; }
+String   mqttPassword()    { return _mqttPassword; }
+String   mqttPrefix()      { return _mqttPrefix.isEmpty() ? String("pchub") : _mqttPrefix; }
+uint16_t mqttIntervalSec() { return _mqttIntervalSec < 5 ? 5 : _mqttIntervalSec; }
+
+void saveMqttEnabled(bool enabled) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("mqtt_en", enabled);
+    prefs.end();
+    reload();
+}
+
+void saveMqttSettings(const String &broker, uint16_t port,
+                      const String &user, const String &password,
+                      const String &prefix, uint16_t intervalSec) {
+    if (intervalSec < 5) intervalSec = 5;
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putString("mqtt_broker", broker);
+    prefs.putUInt("mqtt_port", port);
+    prefs.putString("mqtt_user", user);
+    if (password.length() > 0) prefs.putString("mqtt_pass", password);
+    String pfx = prefix.isEmpty() ? String("pchub") : prefix;
+    prefs.putString("mqtt_prefix", pfx);
+    prefs.putUInt("mqtt_intv", intervalSec);
+    prefs.end();
+    reload();
+}
 
 void saveTgEnabled(bool enabled) {
     Preferences prefs;

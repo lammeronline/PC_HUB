@@ -53,41 +53,44 @@ static bool doSend(const char *text) {
 // ── Update polling & command handling ─────────────────────────────────────────
 
 static void handleCmd(const String &text) {
+    String dev = RuntimeSettings::deviceName();
+
     if (text == "/status" || text.startsWith("/status ")) {
-        String m = "<b>PCHUB Status</b>\n";
+        String m = "🏠 <b>" + dev + "</b>\n\n";
         if (_sensor && _sensor->bme_ok) {
-            m += "Temp: <b>"     + String(_sensor->temperature, 1) + " C</b>\n";
-            m += "Humidity: <b>" + String(_sensor->humidity, 1)    + " %</b>\n";
-            m += "Pressure: <b>" + String(_sensor->pressure, 0)    + " hPa</b>\n";
-            m += "Gas: <b>"      + String(_sensor->gas, 0)         + " kOhm</b>\n";
+            m += "🌡 Температура: <b>" + String(_sensor->temperature, 1) + " °C</b>\n";
+            m += "💧 Влажность: <b>"   + String(_sensor->humidity, 1)    + " %</b>\n";
+            m += "🌫 Давление: <b>"    + String(_sensor->pressure, 0)    + " hPa</b>\n";
+            m += "💨 Газ: <b>"         + String(_sensor->gas, 0)         + " kΩ</b>\n";
         } else {
-            m += "BME680: ERROR\n";
+            m += "⚠️ BME680: нет данных\n";
         }
         if (_weather && _weather->ok)
-            m += "Outdoor: <b>" + String(_weather->temperature, 1) + " C</b>\n";
+            m += "🌤 На улице: <b>" + String(_weather->temperature, 1) + " °C</b>\n";
         if (_sensor && _sensor->rtc_ok)
-            m += "Time: " + String(_sensor->timeStr) + "\n";
+            m += "🕐 Время: " + String(_sensor->timeStr) + "\n";
         doSend(m.c_str());
 
     } else if (text == "/help" || text.startsWith("/help ")) {
-        doSend("<b>PCHUB Bot</b>\n"
-               "/status \xe2\x80\x94 sensor readings\n"
-               "/reboot \xe2\x80\x94 reboot device\n"
-               "/help \xe2\x80\x94 this message");
+        String m = "🏠 <b>" + dev + "</b>\n\n"
+                   "/status — показания датчиков\n"
+                   "/reboot — перезагрузить устройство\n"
+                   "/help — это сообщение";
+        doSend(m.c_str());
 
     } else if (text == "/reboot") {
         _rebootPending   = true;
         _rebootPendingMs = millis();
-        doSend("Send <code>/reboot confirm</code> within 30 s to confirm.");
+        doSend(("🏠 <b>" + dev + "</b>\n\nОтправьте <code>/reboot confirm</code> в течение 30 с для подтверждения.").c_str());
 
     } else if (text == "/reboot confirm") {
         if (_rebootPending && millis() - _rebootPendingMs < 30000UL) {
-            doSend("Rebooting\xe2\x80\xa6");
+            doSend(("♻️ <b>" + dev + "</b> перезагружается…").c_str());
             vTaskDelay(pdMS_TO_TICKS(600));
             ESP.restart();
         } else {
             _rebootPending = false;
-            doSend("No pending reboot or confirmation window expired.");
+            doSend("❌ Нет активного запроса или время истекло.");
         }
     }
 }
@@ -149,9 +152,10 @@ static void evalAlert(AlertState &st, bool cond, unsigned long coolMs,
     if (cond) {
         unsigned long now = millis();
         if (!st.active || now - st.lastSentMs >= coolMs) {
-            char buf[160];
-            snprintf(buf, sizeof(buf), fmt, val, thr);
-            doSend(buf);
+            char body[160];
+            snprintf(body, sizeof(body), fmt, val, thr);
+            String msg = "🏠 <b>" + RuntimeSettings::deviceName() + "</b>\n" + body;
+            doSend(msg.c_str());
             st.lastSentMs = now;
         }
         st.active = true;
@@ -169,19 +173,19 @@ static void doCheckAlerts() {
 
     if (RuntimeSettings::tgTempHiEn())
         evalAlert(_aTempHi, t >= RuntimeSettings::tgTempHi(), coolMs,
-                  "High temp: %.1f C (limit %.1f C)", t, RuntimeSettings::tgTempHi());
+                  "🌡 Высокая температура: %.1f °C (порог %.1f °C)", t, RuntimeSettings::tgTempHi());
     if (RuntimeSettings::tgTempLoEn())
         evalAlert(_aTempLo, t <= RuntimeSettings::tgTempLo(), coolMs,
-                  "Low temp: %.1f C (limit %.1f C)", t, RuntimeSettings::tgTempLo());
+                  "🌡 Низкая температура: %.1f °C (порог %.1f °C)", t, RuntimeSettings::tgTempLo());
     if (RuntimeSettings::tgHumHiEn())
         evalAlert(_aHumHi, h >= RuntimeSettings::tgHumHi(), coolMs,
-                  "High humidity: %.1f%% (limit %.1f%%)", h, RuntimeSettings::tgHumHi());
+                  "💧 Высокая влажность: %.1f%% (порог %.1f%%)", h, RuntimeSettings::tgHumHi());
     if (RuntimeSettings::tgHumLoEn())
         evalAlert(_aHumLo, h <= RuntimeSettings::tgHumLo(), coolMs,
-                  "Low humidity: %.1f%% (limit %.1f%%)", h, RuntimeSettings::tgHumLo());
+                  "💧 Низкая влажность: %.1f%% (порог %.1f%%)", h, RuntimeSettings::tgHumLo());
     if (RuntimeSettings::tgGasLoEn())
         evalAlert(_aGasLo, g <= RuntimeSettings::tgGasLo(), coolMs,
-                  "Bad air quality: %.0f kOhm (limit %.0f kOhm)", g, RuntimeSettings::tgGasLo());
+                  "💨 Плохой воздух: %.0f kΩ (порог %.0f kΩ)", g, RuntimeSettings::tgGasLo());
 }
 
 // ── FreeRTOS task (runs on core 0) ────────────────────────────────────────────

@@ -12,6 +12,7 @@
 #include "RuntimeSettings.h"
 #include "Backlight.h"
 #include "Telegram.h"
+#include "MQTT.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SensorData  currentData;
@@ -151,6 +152,7 @@ void setup() {
     updateSensors(currentData);
     initAPI(&currentData, &weatherData, &currentPC, sdReady);
     Telegram::begin(&currentData, &weatherData);
+    MQTT::begin(&currentData, &weatherData);
     initPCAgent(&currentPC);
     initPCDisplay(&currentPC);
     logReading(currentData, weatherData);
@@ -175,6 +177,7 @@ void loop() {
 
     handleAPI();
     handlePCSerial();
+    MQTT::handle();
 
     if (handleUI()) {
         drawUI(currentData, weatherData, currentUiStatus());

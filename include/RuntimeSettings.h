@@ -46,6 +46,19 @@ namespace RuntimeSettings {
     void saveLedMode(uint8_t mode);
     void savePcEnabled(bool enabled);
 
+    bool     mqttEnabled();
+    String   mqttBroker();
+    uint16_t mqttPort();
+    String   mqttUser();
+    String   mqttPassword();
+    String   mqttPrefix();
+    uint16_t mqttIntervalSec();
+
+    void saveMqttEnabled(bool enabled);
+    void saveMqttSettings(const String &broker, uint16_t port,
+                          const String &user, const String &password,
+                          const String &prefix, uint16_t intervalSec);
+
     void saveTgEnabled(bool enabled);
     void saveTgCredentials(const String &token, const String &chatId);
     void saveTgThresholds(bool tempHiEn, float tempHi,
