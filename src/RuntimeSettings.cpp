@@ -48,6 +48,8 @@ static String   _mqttUser;
 static String   _mqttPassword;
 static String   _mqttPrefix     = "pchub";
 static uint16_t _mqttIntervalSec = 60;
+static float    _bmeTempOffset   = 0.0f;
+static float    _bmeHumOffset    = 0.0f;
 
 static long clampOffset(long offsetSec) {
     if (offsetSec < -12L * 3600L) return -12L * 3600L;
@@ -133,6 +135,8 @@ void reload() {
     _mqttPassword    = prefs.getString("mqtt_pass", "");
     _mqttPrefix      = prefs.getString("mqtt_prefix", "pchub");
     _mqttIntervalSec = (uint16_t)prefs.getUInt("mqtt_intv", 60);
+    _bmeTempOffset   = prefs.getFloat("bme_t_off", 0.0f);
+    _bmeHumOffset    = prefs.getFloat("bme_h_off", 0.0f);
     prefs.end();
 }
 
@@ -308,6 +312,18 @@ void savePcEnabled(bool enabled) {
     prefs.putBool("pc_enabled", enabled);
     prefs.end();
     reload();
+}
+
+float bmeTempOffset() { return _bmeTempOffset; }
+float bmeHumOffset()  { return _bmeHumOffset; }
+
+void saveBmeCalibration(float tempOffset, float humOffset) {
+    _bmeTempOffset = tempOffset;
+    _bmeHumOffset  = humOffset;
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putFloat("bme_t_off", tempOffset);
+    prefs.putFloat("bme_h_off", humOffset);
+    prefs.end();
 }
 
 bool     tgEnabled()      { return _tgEnabled; }

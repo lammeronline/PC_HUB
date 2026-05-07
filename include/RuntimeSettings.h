@@ -54,6 +54,9 @@ namespace RuntimeSettings {
     void saveAutoBacklight(bool enabled);
     void saveLedMode(uint8_t mode);
     void savePcEnabled(bool enabled);
+    float bmeTempOffset();
+    float bmeHumOffset();
+    void saveBmeCalibration(float tempOffset, float humOffset);
 
     bool     mqttEnabled();
     String   mqttBroker();

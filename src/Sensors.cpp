@@ -134,9 +134,9 @@ void updateSensors(SensorData &data) {
 
     if (_bme_found && bme.performReading()) {
         data.bme_ok = true;
-        data.temperature = bme.temperature;
-        data.humidity = bme.humidity;
-        data.pressure = bme.pressure / 100.0; // в hPa
-        data.gas = bme.gas_resistance / 1000.0; // в KOhms
+        data.temperature = bme.temperature + RuntimeSettings::bmeTempOffset();
+        data.humidity    = constrain(bme.humidity + RuntimeSettings::bmeHumOffset(), 0.0f, 100.0f);
+        data.pressure    = bme.pressure / 100.0f;
+        data.gas         = bme.gas_resistance / 1000.0f;
     }
 }

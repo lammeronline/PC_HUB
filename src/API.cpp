@@ -358,6 +358,8 @@ static void handleStatus() {
     system["sd_total_mb"]          = _sdTotalMb;
     system["sd_used_mb"]           = _sdUsedMb;
     system["weather_log_enabled"]  = RuntimeSettings::weatherLogEnabled();
+    system["bme_temp_offset"]      = RuntimeSettings::bmeTempOffset();
+    system["bme_hum_offset"]       = RuntimeSettings::bmeHumOffset();
 
     JsonObject mqtt = doc["mqtt"].to<JsonObject>();
     mqtt["enabled"]      = RuntimeSettings::mqttEnabled();
@@ -494,9 +496,11 @@ static void handleSettingsGet() {
     doc["wind_unit"]      = RuntimeSettings::windMetric() ? "m/s" : "km/h";
     doc["ntp_server"]     = RuntimeSettings::ntpServer();
     doc["ntp_offset_sec"] = RuntimeSettings::ntpOffsetSec();
-    doc["backlight_pct"]  = Backlight::brightness();
+    doc["backlight_pct"]      = Backlight::brightness();
     doc["backlight_inverted"] = RuntimeSettings::backlightInverted();
-    doc["led_mode"]       = RuntimeSettings::ledMode();
+    doc["led_mode"]           = RuntimeSettings::ledMode();
+    doc["bme_temp_offset"]    = RuntimeSettings::bmeTempOffset();
+    doc["bme_hum_offset"]     = RuntimeSettings::bmeHumOffset();
     sendJson(doc);
 }
 
@@ -591,6 +595,14 @@ static void handleSettingsPost() {
 
     if (doc["pc_enabled"].is<bool>()) {
         RuntimeSettings::savePcEnabled(doc["pc_enabled"].as<bool>());
+    }
+
+    if (doc["bme_temp_offset"].is<float>() || doc["bme_hum_offset"].is<float>()) {
+        float tOff = doc["bme_temp_offset"] | RuntimeSettings::bmeTempOffset();
+        float hOff = doc["bme_hum_offset"]  | RuntimeSettings::bmeHumOffset();
+        tOff = constrain(tOff, -10.0f, 10.0f);
+        hOff = constrain(hOff, -20.0f, 20.0f);
+        RuntimeSettings::saveBmeCalibration(tOff, hOff);
     }
 
     if (doc["ntp_enabled"].is<bool>()) {
