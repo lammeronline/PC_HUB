@@ -17,3 +17,5 @@ bool handleUI();
 void invalidateUI();
 void invalidateForecastUI();
 void drawUI(const SensorData &sensor, const WeatherData &weather, const UiStatus &status);
+void drawAPScreen(TFT_eSPI &t, const String &ssid, const String &ip);
+void drawConnectingScreen(TFT_eSPI &t, const String &ssid);

@@ -78,6 +78,11 @@ static uint32_t _hist7Rev = 0;
 static uint32_t _hist30Rev = 0;
 static bool _otaFailed = false;
 static String _otaMessage;
+static bool _pendingRestart = false;
+static bool _isApMode      = false;
+
+bool apiPendingRestart()    { return _pendingRestart; }
+void setApiApMode(bool v)   { _isApMode = v; }
 
 static HistoryPoint makeHistoryPoint(uint32_t ts, const SensorData &sensor) {
     HistoryPoint p;
@@ -317,6 +322,14 @@ static void handleStatus() {
         day["weather_code"] = _weather->forecast[i].weather_code;
     }
 
+    JsonObject ipCfg = doc["ip_config"].to<JsonObject>();
+    ipCfg["static_enabled"] = RuntimeSettings::staticIpEnabled();
+    ipCfg["static_ip"]      = RuntimeSettings::staticIp();
+    ipCfg["static_gw"]      = RuntimeSettings::staticGateway();
+    ipCfg["static_sn"]      = RuntimeSettings::staticSubnet();
+    ipCfg["static_dns"]     = RuntimeSettings::staticDns();
+    ipCfg["ap_ip"]          = RuntimeSettings::apIp();
+
     JsonObject pc = doc["pc"].to<JsonObject>();
     if (_pcData) {
         unsigned long ageMs = _pcData->lastMs ? millis() - _pcData->lastMs : 0;
@@ -473,6 +486,8 @@ static void handleSettingsPost() {
         RuntimeSettings::savePcEnabled(doc["pc_enabled"].as<bool>());
     }
 
+    bool inApMode = _isApMode;
+
     JsonDocument resp;
     resp["ok"] = true;
     resp["wifi_changed"] = wifiChanged;
@@ -482,15 +497,23 @@ static void handleSettingsPost() {
     resp["wind_changed"] = windChanged;
     resp["backlight_changed"] = backlightChanged;
     resp["led_changed"] = ledChanged;
+    if (wifiChanged && inApMode) {
+        resp["rebooting"] = true;
+        resp["ap_mode"]   = true;
+    }
     sendJson(resp);
 
     if (wifiChanged) {
-        delay(200);
-        WiFi.disconnect(false, false);
-        WiFi.mode(WIFI_STA);
-        String ssid = RuntimeSettings::wifiSsid();
-        String pass = RuntimeSettings::wifiPassword();
-        WiFi.begin(ssid.c_str(), pass.c_str());
+        if (inApMode) {
+            // Отложенный restart — выполнится из main loop, чтобы TFT успел обновиться
+            _pendingRestart = true;
+        } else {
+            WiFi.disconnect(false, false);
+            WiFi.mode(WIFI_STA);
+            String ssid = RuntimeSettings::wifiSsid();
+            String pass = RuntimeSettings::wifiPassword();
+            WiFi.begin(ssid.c_str(), pass.c_str());
+        }
     }
 }
 
@@ -802,6 +825,42 @@ static void handleFactoryReset() {
     ESP.restart();
 }
 
+static void handleIpGet() {
+    JsonDocument doc;
+    doc["ok"]             = true;
+    doc["static_enabled"] = RuntimeSettings::staticIpEnabled();
+    doc["static_ip"]      = RuntimeSettings::staticIp();
+    doc["static_gw"]      = RuntimeSettings::staticGateway();
+    doc["static_sn"]      = RuntimeSettings::staticSubnet();
+    doc["static_dns"]     = RuntimeSettings::staticDns();
+    doc["ap_ip"]          = RuntimeSettings::apIp();
+    sendJson(doc);
+}
+
+static void handleIpPost() {
+    String body = server.arg("plain");
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+
+    if (doc["static_enabled"].is<bool>() || doc["static_ip"].is<const char*>()) {
+        bool staticEn = doc["static_enabled"] | RuntimeSettings::staticIpEnabled();
+        String ip  = doc["static_ip"]  | RuntimeSettings::staticIp();
+        String gw  = doc["static_gw"]  | RuntimeSettings::staticGateway();
+        String sn  = doc["static_sn"]  | RuntimeSettings::staticSubnet();
+        String dns = doc["static_dns"] | RuntimeSettings::staticDns();
+        RuntimeSettings::saveIpSettings(staticEn, ip, gw, sn, dns);
+    }
+
+    if (doc["ap_ip"].is<const char*>()) {
+        RuntimeSettings::saveApIp(doc["ap_ip"].as<String>());
+    }
+
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleRoot() {
     server.sendHeader("Cache-Control", "no-store");
     server.send_P(200, "text/html; charset=utf-8", WEB_INDEX);
@@ -833,6 +892,19 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     _pcData  = pcData;
     _sdReady = sdReady;
 
+    // Captive portal: каждая ОС проверяет свой URL — перенаправляем на главную
+    auto cpRedirect = []() {
+        String url = "http://" + RuntimeSettings::apIp() + "/";
+        server.sendHeader("Location", url, true);
+        server.send(302, "text/plain", "");
+    };
+    server.on("/generate_204",        HTTP_GET, cpRedirect);  // Android
+    server.on("/hotspot-detect.html", HTTP_GET, cpRedirect);  // iOS / macOS
+    server.on("/connecttest.txt",     HTTP_GET, cpRedirect);  // Windows
+    server.on("/ncsi.txt",            HTTP_GET, cpRedirect);  // Windows (старый)
+    server.on("/redirect",            HTTP_GET, cpRedirect);  // Chrome
+    server.on("/canonical.html",      HTTP_GET, cpRedirect);  // Chrome
+
     server.on("/",           HTTP_GET,  handleRoot);
     server.on("/api",        HTTP_GET,  handleApiInfo);
     server.on("/api/status", HTTP_GET,  handleStatus);
@@ -851,8 +923,16 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/factory-reset", HTTP_POST, handleFactoryReset);
     server.on("/api/mqtt",          HTTP_GET,  handleMqttGet);
     server.on("/api/mqtt",          HTTP_POST, handleMqttPost);
+    server.on("/api/ip",            HTTP_GET,  handleIpGet);
+    server.on("/api/ip",            HTTP_POST, handleIpPost);
     server.onNotFound([]() {
-        server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
+        if (WiFi.getMode() == WIFI_MODE_AP) {
+            String url = "http://" + RuntimeSettings::apIp() + "/";
+            server.sendHeader("Location", url, true);
+            server.send(302, "text/plain", "");
+        } else {
+            server.send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
+        }
     });
 
     String hostname = RuntimeSettings::hostname();

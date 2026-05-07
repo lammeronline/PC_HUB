@@ -54,6 +54,17 @@ namespace RuntimeSettings {
     String   mqttPrefix();
     uint16_t mqttIntervalSec();
 
+    bool   staticIpEnabled();
+    String staticIp();
+    String staticGateway();
+    String staticSubnet();
+    String staticDns();
+    String apIp();
+
+    void saveIpSettings(bool staticEnabled, const String &ip, const String &gw,
+                        const String &sn, const String &dns);
+    void saveApIp(const String &ip);
+
     void saveMqttEnabled(bool enabled);
     void saveMqttSettings(const String &broker, uint16_t port,
                           const String &user, const String &password,

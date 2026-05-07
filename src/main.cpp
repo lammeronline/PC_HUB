@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <DNSServer.h>
 #include <TFT_eSPI.h>
 #include "Config.h"
 #include "Sensors.h"
@@ -19,15 +21,17 @@ SensorData  currentData;
 WeatherData weatherData;
 PCData      currentPC;
 
-static const unsigned long SENSOR_INTERVAL_MS = 1000;
+static const unsigned long SENSOR_INTERVAL_MS       = 1000;
 static const unsigned long WEATHER_UPDATE_INTERVAL_MS = WEATHER_UPDATE_INTERVAL_SEC * 1000UL;
-static const unsigned long DATA_LOG_INTERVAL_MS = DATA_LOG_INTERVAL_SEC * 1000UL;
-static unsigned long lastWeatherUpdate = 0;
-static unsigned long lastLogWrite = 0;
-static unsigned long lastSensorUpdate = 0;
+static const unsigned long DATA_LOG_INTERVAL_MS     = DATA_LOG_INTERVAL_SEC * 1000UL;
+static unsigned long lastWeatherUpdate  = 0;
+static unsigned long lastLogWrite       = 0;
+static unsigned long lastSensorUpdate   = 0;
 static String activeWeatherCity;
-static bool sdReady = false;
+static bool sdReady   = false;
 static uint64_t sdSizeMb = 0;
+static bool      _apMode = false;
+static DNSServer _dnsServer;
 
 static UiStatus currentUiStatus() {
     UiStatus status;
@@ -57,6 +61,14 @@ static void bootStatus(TFT_eSPI &t, int x, int y, bool ok,
     t.setTextPadding(0);
 }
 
+static void bootPending(TFT_eSPI &t, int x, int y, uint16_t bg, uint16_t amber) {
+    t.setTextFont(2);
+    t.setTextColor(amber, bg);
+    t.setTextPadding(92);
+    t.drawString("...", x, y);
+    t.setTextPadding(0);
+}
+
 // ── setup ───────────────────────────────────────────────────────────────────
 
 void setup() {
@@ -76,13 +88,12 @@ void setup() {
     const uint16_t BLUE  = 0x1B9F;
     const uint16_t AMBER = 0xFD00;
     const uint16_t MUTED = 0xA514;
-    const int LX = 14;   // label x
-    const int SX = 222;  // status x
+    const int LX = 14;
+    const int SX = 222;
     const int ROW = 22;
 
     tft.fillScreen(BG);
     tft.fillRect(0, 36, 320, 2, BLUE);
-
     tft.setTextFont(4);
     tft.setTextColor(TFT_WHITE, BG);
     tft.drawString("PCHUB", 10, 5);
@@ -92,7 +103,7 @@ void setup() {
 
     int y = 46;
 
-    // Hardware init (fast — no pending indicator needed)
+    // ── Hardware ─────────────────────────────────────────────────────────────
     initSensors();
     updateSensors(currentData);
 
@@ -118,37 +129,70 @@ void setup() {
     }
     y += ROW;
 
-    // Dim separator between hardware and network steps
     tft.drawLine(LX, y + 4, 305, y + 4, 0x2945);
     y += 12;
 
-    // NTP (slow — show pending first)
+    // ── WiFi ─────────────────────────────────────────────────────────────────
+    bootLabel(tft, LX, y, "WiFi", BG, MUTED);
+    bootPending(tft, SX, y, BG, AMBER);
+
+    bool wifiOk = connectWiFi();
+
+    if (wifiOk) {
+        String ip = WiFi.localIP().toString();
+        bootStatus(tft, SX, y, true, BG, ip.c_str());
+        y += ROW;
+    } else {
+        bootStatus(tft, SX, y, false, BG, "AP MODE");
+        y += ROW;
+
+        // ── AP mode ──────────────────────────────────────────────────────────
+        String apSsid = "PCHUB-" + RuntimeSettings::hostname();
+        String apIpStr = RuntimeSettings::apIp();
+        IPAddress apIpAddr, apSubnet(255, 255, 255, 0);
+        if (!apIpAddr.fromString(apIpStr)) apIpAddr = IPAddress(192, 168, 4, 1);
+        WiFi.mode(WIFI_AP);
+        WiFi.softAPConfig(apIpAddr, apIpAddr, apSubnet);
+        WiFi.softAP(apSsid.c_str());
+        _apMode = true;
+        setApiApMode(true);
+
+        _dnsServer.start(53, "*", apIpAddr);
+
+        setLED(255, 128, 0);            // оранжевый = AP режим
+
+        initAPI(&currentData, &weatherData, &currentPC, sdReady);
+
+        delay(1500);
+        tft.fillScreen(TFT_BLACK);
+        drawAPScreen(tft, apSsid, apIpStr.c_str());
+        offLED();
+        return;
+    }
+
+    // ── Network (только если WiFi подключён) ─────────────────────────────────
+
     bootLabel(tft, LX, y, "NTP sync", BG, MUTED);
-    tft.setTextFont(2); tft.setTextColor(AMBER, BG);
-    tft.setTextPadding(92); tft.drawString("...", SX, y); tft.setTextPadding(0);
+    bootPending(tft, SX, y, BG, AMBER);
     bool ntp_ok = syncRTCfromNTP();
     bootStatus(tft, SX, y, ntp_ok, BG);
     y += ROW;
 
-    // Geocoding (slow)
     bootLabel(tft, LX, y, "Geocoding", BG, MUTED);
-    tft.setTextFont(2); tft.setTextColor(AMBER, BG);
-    tft.setTextPadding(92); tft.drawString("...", SX, y); tft.setTextPadding(0);
+    bootPending(tft, SX, y, BG, AMBER);
     activeWeatherCity = RuntimeSettings::weatherCity();
     bool geo_ok = geocodeCity(activeWeatherCity.c_str());
     bootStatus(tft, SX, y, geo_ok, BG, geo_ok ? activeWeatherCity.c_str() : nullptr);
     y += ROW;
 
-    // Weather fetch (slow)
     bootLabel(tft, LX, y, "Weather", BG, MUTED);
-    tft.setTextFont(2); tft.setTextColor(AMBER, BG);
-    tft.setTextPadding(92); tft.drawString("...", SX, y); tft.setTextPadding(0);
+    bootPending(tft, SX, y, BG, AMBER);
     fetchWeather(weatherData);
     invalidateForecastUI();
     lastWeatherUpdate = millis();
     bootStatus(tft, SX, y, weatherData.ok, BG);
 
-    // Finish init
+    // ── Finish init ──────────────────────────────────────────────────────────
     updateSensors(currentData);
     initAPI(&currentData, &weatherData, &currentPC, sdReady);
     Telegram::begin(&currentData, &weatherData);
@@ -173,6 +217,22 @@ void setup() {
 }
 
 void loop() {
+    // ── Pending WiFi restart (срабатывает и в AP и в обычном режиме) ─────────
+    if (apiPendingRestart()) {
+        drawConnectingScreen(tft, RuntimeSettings::wifiSsid());
+        delay(800);
+        ESP.restart();
+    }
+
+    // ── AP mode: только веб-сервер ───────────────────────────────────────────
+    if (_apMode) {
+        _dnsServer.processNextRequest();
+        handleAPI();
+        delay(10);
+        return;
+    }
+
+    // ── Normal mode ──────────────────────────────────────────────────────────
     unsigned long now = millis();
 
     handleAPI();

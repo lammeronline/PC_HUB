@@ -19,8 +19,8 @@
 #define LED_B 17
 
 // WiFi / NTP
-#define WIFI_SSID     "Interneta.NET (2.4 GHz)"
-#define WIFI_PASSWORD "q2795844q"
+#define WIFI_SSID     ""
+#define WIFI_PASSWORD ""
 #define NTP_SERVER    "pool.ntp.org"
 #define NTP_OFFSET    10800
 
@@ -28,7 +28,7 @@
 #define DEVICE_NAME "pchub"
 
 // Weather (Open-Meteo)
-#define WEATHER_CITY "Dnipro"
+#define WEATHER_CITY ""
 
 // Wind speed unit: 0 = km/h,  1 = m/s
 #define WIND_UNIT_MS 1

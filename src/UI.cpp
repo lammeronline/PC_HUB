@@ -1034,3 +1034,121 @@ bool handleUI() { return ui.handleTouch(); }
 void invalidateUI() { ui.invalidate(); }
 void invalidateForecastUI() { ui.invalidateForecast(); }
 void drawUI(const SensorData &sensor, const WeatherData &weather, const UiStatus &status) { ui.draw(sensor, weather, status); }
+
+// shared helpers — same palette as the boot screen in main.cpp
+static void apLabel(TFT_eSPI *t, int x, int y, const char *text,
+                    uint16_t bg, uint16_t col) {
+    t->setTextFont(2);
+    t->setTextColor(col, bg);
+    t->setTextPadding(200);
+    t->drawString(text, x, y);
+    t->setTextPadding(0);
+}
+static void apValue(TFT_eSPI *t, int x, int y, const char *text,
+                    uint16_t bg, uint16_t col) {
+    t->setTextFont(2);
+    t->setTextColor(col, bg);
+    t->setTextPadding(290);
+    t->drawString(text, x, y);
+    t->setTextPadding(0);
+}
+static void apHint(TFT_eSPI *t, int x, int y, const char *text,
+                   uint16_t bg, uint16_t col) {
+    t->setTextFont(1);
+    t->setTextColor(col, bg);
+    t->drawString(text, x, y);
+}
+
+void drawAPScreen(TFT_eSPI &tRef, const String &ssid, const String &ip) {
+    TFT_eSPI *t = &tRef;
+    const uint16_t BG    = 0x1082;
+    const uint16_t BLUE  = 0x1B9F;
+    const uint16_t AMBER = 0xFD00;
+    const uint16_t MUTED = 0xA514;
+    const uint16_t DIM   = 0x528A;
+    const uint16_t GREEN = 0x07E0;
+    const uint16_t SKY   = 0x055F;
+    const int LX = 14;
+    const int ROW = 22;
+
+    t->fillScreen(BG);
+    t->fillRect(0, 36, 320, 2, BLUE);
+
+    // Header — identical to boot screen
+    t->setTextFont(4);
+    t->setTextColor(TFT_WHITE, BG);
+    t->drawString("PCHUB", 10, 5);
+    t->setTextFont(2);
+    t->setTextColor(MUTED, BG);
+    t->drawString("AP Setup Mode", 110, 12);
+
+    int y = 46;
+
+    // Row 1: Wi-Fi label
+    apLabel(t, LX, y, "Wi-Fi network:", BG, MUTED);
+    y += ROW;
+    // Value on its own line — SSID can be long
+    apValue(t, LX + 8, y, ssid.c_str(), BG, GREEN);
+    y += ROW - 4;
+    apHint(t, LX + 8, y, "open network, no password", BG, DIM);
+    y += 14;
+
+    // Separator
+    t->drawLine(LX, y + 3, 305, y + 3, 0x2945);
+    y += 12;
+
+    // Row 2: Browser
+    apLabel(t, LX, y, "Open in browser:", BG, MUTED);
+    y += ROW;
+    apValue(t, LX + 8, y, ip.c_str(), BG, SKY);
+    y += ROW - 4;
+    apHint(t, LX + 8, y, "captive portal: any URL redirects here", BG, DIM);
+    y += 14;
+
+    // Separator
+    t->drawLine(LX, y + 3, 305, y + 3, 0x2945);
+    y += 12;
+
+    // Row 3: Action
+    apLabel(t, LX, y, "Settings -> WiFi -> Save", BG, MUTED);
+    y += ROW - 4;
+    apHint(t, LX + 8, y, "device reboots automatically on save", BG, DIM);
+}
+
+void drawConnectingScreen(TFT_eSPI &tRef, const String &ssid) {
+    TFT_eSPI *t = &tRef;
+    const uint16_t BG    = 0x1082;
+    const uint16_t BLUE  = 0x1B9F;
+    const uint16_t AMBER = 0xFD00;
+    const uint16_t MUTED = 0xA514;
+    const uint16_t DIM   = 0x528A;
+    const int LX = 14;
+    const int ROW = 22;
+
+    t->fillScreen(BG);
+    t->fillRect(0, 36, 320, 2, BLUE);
+
+    t->setTextFont(4);
+    t->setTextColor(TFT_WHITE, BG);
+    t->drawString("PCHUB", 10, 5);
+    t->setTextFont(2);
+    t->setTextColor(AMBER, BG);
+    t->drawString("Connecting...", 110, 12);
+
+    int y = 46;
+    apLabel(t, LX, y, "Connecting to Wi-Fi:", BG, MUTED);
+    y += ROW;
+    apValue(t, LX + 8, y, ssid.c_str(), BG, TFT_WHITE);
+    y += ROW + 4;
+
+    t->drawLine(LX, y + 3, 305, y + 3, 0x2945);
+    y += 12;
+
+    apHint(t, LX, y, "AP mode is shutting down.", BG, DIM);
+    y += 14;
+    apHint(t, LX, y, "If success: connect to your main WiFi", BG, DIM);
+    y += 12;
+    apHint(t, LX, y, "and open the device address in browser.", BG, DIM);
+    y += 14;
+    apHint(t, LX, y, "If failed: AP will restart in ~20 sec.", BG, DIM);
+}

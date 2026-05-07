@@ -16,4 +16,5 @@ struct SensorData {
 // Объявляем функции, которые будем вызывать из main
 void initSensors();
 void updateSensors(SensorData &data);
-bool syncRTCfromNTP(); // Синхронизация RTC по NTP, возвращает true при успехе
+bool connectWiFi();    // Подключение к WiFi в режиме STA, возвращает true при успехе
+bool syncRTCfromNTP(); // Синхронизация RTC по NTP (WiFi уже должен быть подключён)

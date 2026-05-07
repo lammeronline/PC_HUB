@@ -8,3 +8,5 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
              PCData *pcData, bool sdReady);
 void handleAPI();
 bool apiReady();
+bool apiPendingRestart();
+void setApiApMode(bool v);

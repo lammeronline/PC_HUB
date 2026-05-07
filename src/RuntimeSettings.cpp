@@ -31,6 +31,12 @@ static float    _tgHumLo      = 30.0f;
 static bool     _tgGasLoEn    = false;
 static float    _tgGasLo      = 50.0f;
 static uint16_t _tgCooldownMin = 10;
+static bool   _staticIpEnabled = false;
+static String _staticIp        = "";
+static String _staticGateway   = "";
+static String _staticSubnet    = "255.255.255.0";
+static String _staticDns       = "8.8.8.8";
+static String _apIp            = "192.168.4.1";
 static bool     _mqttEnabled    = false;
 static String   _mqttBroker;
 static uint16_t _mqttPort       = 1883;
@@ -106,6 +112,12 @@ void reload() {
     _tgGasLoEn    = prefs.getBool("tg_glo_en", false);
     _tgGasLo      = prefs.getFloat("tg_glo", 50.0f);
     _tgCooldownMin   = (uint16_t)prefs.getUInt("tg_cooldown", 10);
+    _staticIpEnabled = prefs.getBool("ip_static", false);
+    _staticIp        = prefs.getString("static_ip", "");
+    _staticGateway   = prefs.getString("static_gw", "");
+    _staticSubnet    = prefs.getString("static_sn", "255.255.255.0");
+    _staticDns       = prefs.getString("static_dns", "8.8.8.8");
+    _apIp            = prefs.getString("ap_ip", "192.168.4.1");
     _mqttEnabled     = prefs.getBool("mqtt_en", false);
     _mqttBroker      = prefs.getString("mqtt_broker", "");
     _mqttPort        = (uint16_t)prefs.getUInt("mqtt_port", 1883);
@@ -277,6 +289,36 @@ float    tgHumLo()        { return _tgHumLo; }
 bool     tgGasLoEn()      { return _tgGasLoEn; }
 float    tgGasLo()        { return _tgGasLo; }
 uint16_t tgCooldownMin()  { return _tgCooldownMin; }
+
+bool   staticIpEnabled() { return _staticIpEnabled; }
+String staticIp()        { return _staticIp; }
+String staticGateway()   { return _staticGateway; }
+String staticSubnet()    { return _staticSubnet.isEmpty() ? String("255.255.255.0") : _staticSubnet; }
+String staticDns()       { return _staticDns.isEmpty()   ? String("8.8.8.8")       : _staticDns; }
+String apIp()            { return _apIp.isEmpty()        ? String("192.168.4.1")   : _apIp; }
+
+void saveIpSettings(bool staticEnabled, const String &ip, const String &gw,
+                    const String &sn, const String &dns) {
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putBool("ip_static", staticEnabled);
+    prefs.putString("static_ip",  ip);
+    prefs.putString("static_gw",  gw);
+    prefs.putString("static_sn",  sn.isEmpty()  ? String("255.255.255.0") : sn);
+    prefs.putString("static_dns", dns.isEmpty() ? String("8.8.8.8")       : dns);
+    prefs.end();
+    reload();
+}
+
+void saveApIp(const String &ip) {
+    String clean = ip; clean.trim();
+    if (clean.isEmpty()) return;
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putString("ap_ip", clean);
+    prefs.end();
+    reload();
+}
 
 bool     mqttEnabled()     { return _mqttEnabled; }
 String   mqttBroker()      { return _mqttBroker; }
