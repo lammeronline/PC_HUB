@@ -61,6 +61,7 @@ bool connectWiFi() {
     }
 
     WiFi.begin(ssid.c_str(), RuntimeSettings::wifiPassword().c_str());
+    WiFi.setAutoReconnect(true);
 
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 30) {
@@ -88,7 +89,6 @@ bool syncRTCfromNTP() {
 
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo, 5000)) {
-        WiFi.disconnect(true);
         Serial.println("NTP: time FAILED");
         return false;
     }

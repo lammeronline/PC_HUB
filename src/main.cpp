@@ -28,6 +28,7 @@ static unsigned long lastWeatherUpdate  = 0;
 static unsigned long lastLogWrite       = 0;
 static unsigned long lastSensorUpdate   = 0;
 static unsigned long lastNtpSync        = 0;
+static unsigned long wifiDownSince      = 0;
 static String activeWeatherCity;
 static bool sdReady   = false;
 static uint64_t sdSizeMb = 0;
@@ -255,6 +256,18 @@ void loop() {
     handleAPI();
     handlePCSerial();
     MQTT::handle();
+
+    // WiFi watchdog — reconnect if disconnected for over 60 s
+    if (WiFi.status() != WL_CONNECTED) {
+        if (wifiDownSince == 0) wifiDownSince = now;
+        else if (now - wifiDownSince >= 60000UL) {
+            Serial.println("WiFi: lost >60s, reconnecting");
+            WiFi.reconnect();
+            wifiDownSince = now;
+        }
+    } else {
+        wifiDownSince = 0;
+    }
 
     uint8_t ntpIntervalH = RuntimeSettings::ntpSyncIntervalH();
     if (ntpIntervalH > 0 && RuntimeSettings::ntpEnabled()) {

@@ -421,11 +421,11 @@ private:
                 tft->drawString("--", tx, CY + 24);
             }
 
-            tft->setTextFont(1);
+            tft->setTextFont(2);
             tft->setTextColor(C_CYAN, C_PANEL);
             if (weather.ok) fmtWindSpeed(line, sizeof(line), weather.wind_speed);
             else            snprintf(line, sizeof(line), "--");
-            tft->drawString(line, tx, CY + 52);
+            tft->drawString(line, tx, CY + 46);
 
             tft->setTextPadding(0);
             tft->setTextDatum(TL_DATUM);
