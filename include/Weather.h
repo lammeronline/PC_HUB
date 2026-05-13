@@ -20,6 +20,18 @@ struct WeatherData {
     DayForecast forecast[7];
 };
 
-bool        geocodeCity(const char* city);  // Получить координаты по имени города
+bool        geocodeCity(const char* city);
 bool        fetchWeather(WeatherData &data);
 const char* weatherDesc(int code);
+
+// Background FreeRTOS task — call once after WiFi connects.
+// All subsequent weather/geocode work happens on core 0 so the
+// main loop (web server) is never blocked by HTTPS calls.
+void initWeatherTask(WeatherData* data);
+void triggerWeatherFetch();                     // refresh weather only
+void triggerGeocodeAndFetch(const char* city);  // re-geocode then refresh
+bool weatherTaskBusy();
+
+// Set to true by the task after each successful fetch; main loop checks
+// this flag to write the weather log entry, then clears it.
+extern volatile bool weatherWasUpdated;

@@ -244,51 +244,71 @@ void preloadHistoryFromSD() {
     Serial.printf("History preload: %d points from SD\n", loaded);
 }
 
+// Streams the response through a 256-byte stack buffer — no heap allocation for
+// the JSON payload itself, avoiding fragmentation from ~1440 temporary Strings.
 template <size_t N>
 static void sendHistoryJson(const HistoryRing<N> &ring, const char *range) {
-    const size_t total = ring.size();
-    const size_t maxPoints = 360;
-    size_t step = total > maxPoints ? (total + maxPoints - 1) / maxPoints : 1;
+    const size_t total  = ring.size();
+    const size_t maxPts = 360;
+    const size_t step   = total > maxPts ? (total + maxPts - 1) / maxPts : 1;
+    const size_t pts    = (total + step - 1) / step;
 
-    String out;
-    out.reserve((total / step + 1) * 58 + 128);
-    out += "{\"range\":\"";
-    out += range;
-    out += "\",\"n\":";
-    out += (total + step - 1) / step;
-    out += ",\"ts\":[";
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "application/json", "");
 
-    for (size_t i = 0; i < total; i += step) {
-        if (i) out += ',';
-        out += ring.at(i).ts;
-    }
-    out += "],\"temperature\":[";
-    for (size_t i = 0; i < total; i += step) {
-        if (i) out += ',';
-        out += String(ring.at(i).temperature, 1);
-    }
-    out += "],\"humidity\":[";
-    for (size_t i = 0; i < total; i += step) {
-        if (i) out += ',';
-        out += String(ring.at(i).humidity, 1);
-    }
-    out += "],\"pressure\":[";
-    for (size_t i = 0; i < total; i += step) {
-        if (i) out += ',';
-        out += String(ring.at(i).pressure, 1);
-    }
-    out += "],\"gas\":[";
-    for (size_t i = 0; i < total; i += step) {
-        if (i) out += ',';
-        out += String(ring.at(i).gas, 1);
-    }
-    out += "]}";
+    char   buf[256];
+    size_t pos = 0;
 
-    server.send(200, "application/json", out);
+    auto flush = [&]() {
+        if (pos) { server.sendContent(buf, pos); pos = 0; }
+    };
+    auto cat = [&](const char *s, size_t n) {
+        if (pos + n >= sizeof(buf)) flush();
+        memcpy(buf + pos, s, n); pos += n;
+    };
+    auto catS = [&](const char *s) { cat(s, strlen(s)); };
+
+    char tmp[32]; size_t n;
+
+    n = (size_t)snprintf(tmp, sizeof(tmp), "{\"range\":\"%s\",\"n\":%u,\"ts\":[",
+                         range, (unsigned)pts);
+    cat(tmp, n);
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%lu" : "%lu",
+                             (unsigned long)ring.at(i).ts);
+        cat(tmp, n);
+    }
+    catS("],\"temperature\":[");
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.1f" : "%.1f",
+                             ring.at(i).temperature);
+        cat(tmp, n);
+    }
+    catS("],\"humidity\":[");
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.1f" : "%.1f",
+                             ring.at(i).humidity);
+        cat(tmp, n);
+    }
+    catS("],\"pressure\":[");
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.1f" : "%.1f",
+                             ring.at(i).pressure);
+        cat(tmp, n);
+    }
+    catS("],\"gas\":[");
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.1f" : "%.1f",
+                             ring.at(i).gas);
+        cat(tmp, n);
+    }
+    catS("]}");
+    flush();
 }
 
 static void sendJson(JsonDocument &doc) {
     String out;
+    out.reserve(measureJson(doc) + 1);  // exact size — no reallocation
     serializeJson(doc, out);
     server.send(200, "application/json", out);
 }
@@ -652,7 +672,16 @@ static void handleSettingsPost() {
 }
 
 static void handleScan() {
-    int n = WiFi.scanNetworks(false, true);
+    int n = WiFi.scanComplete();
+    if (n == WIFI_SCAN_FAILED) {
+        WiFi.scanNetworks(true, true);
+        server.send(200, "application/json", "{\"ok\":false,\"scanning\":true}");
+        return;
+    }
+    if (n == WIFI_SCAN_RUNNING) {
+        server.send(200, "application/json", "{\"ok\":false,\"scanning\":true}");
+        return;
+    }
     String out;
     out.reserve(n * 64 + 16);
     out = "{\"ok\":true,\"networks\":[";

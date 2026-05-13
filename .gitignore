@@ -5,6 +5,9 @@
 .vscode/launch.json
 .vscode/ipch
 
+# Claude Code
+.claude/
+
 # C# build artifacts
 PCAgent/bin/
 PCAgent/obj/

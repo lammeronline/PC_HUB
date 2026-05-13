@@ -207,6 +207,7 @@ void setup() {
     MQTT::begin(&currentData, &weatherData);
     initPCAgent(&currentPC);
     initPCDisplay(&currentPC);
+    initWeatherTask(&weatherData);
 
     // ── Preload history from SD ───────────────────────────────────────────────
     if (sdReady && currentData.rtc_ok) {
@@ -291,22 +292,22 @@ void loop() {
         lastSensorUpdate = now;
     }
 
-    if (now - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL_MS) {
-        fetchWeather(weatherData);
-        invalidateForecastUI();
-        if (RuntimeSettings::weatherLogEnabled())
-            logWeather(currentData, weatherData);
+    if (now - lastWeatherUpdate >= WEATHER_UPDATE_INTERVAL_MS && !weatherTaskBusy()) {
+        triggerWeatherFetch();
         lastWeatherUpdate = now;
     }
 
+    // Log weather after the background task signals a successful fetch
+    if (weatherWasUpdated) {
+        weatherWasUpdated = false;
+        if (RuntimeSettings::weatherLogEnabled())
+            logWeather(currentData, weatherData);
+    }
+
     String weatherCity = RuntimeSettings::weatherCity();
-    if (weatherCity != activeWeatherCity) {
+    if (weatherCity != activeWeatherCity && !weatherTaskBusy()) {
         activeWeatherCity = weatherCity;
-        if (geocodeCity(activeWeatherCity.c_str())) {
-            fetchWeather(weatherData);
-        } else {
-            weatherData.ok = false;
-        }
+        triggerGeocodeAndFetch(activeWeatherCity.c_str());
         invalidateUI();
         lastWeatherUpdate = now;
     }

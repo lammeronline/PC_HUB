@@ -1,10 +1,13 @@
 #include "Weather.h"
 #include "Config.h"
 #include "RuntimeSettings.h"
+#include "UI.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <time.h>
 
 static const char* DAY_NAMES[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -222,3 +225,48 @@ const char* weatherDesc(int code) {
     if (code <= 86) return "SnowShwr";
     return "Storm   ";
 }
+
+// ── Background weather task (core 0) ──────────────────────────────────────────
+// Runs geocoding + fetchWeather on core 0 alongside the Telegram task so the
+// main loop on core 1 is never blocked by HTTPS calls (~3.5 s each).
+
+volatile bool weatherWasUpdated = false;
+
+static WeatherData*  _taskData   = nullptr;
+static TaskHandle_t  _taskHandle = nullptr;
+static volatile bool _taskBusy   = false;
+static volatile int  _taskCmd    = 0;   // 1 = fetch only, 2 = geocode + fetch
+static char          _taskCity[64] = {};
+
+static void weatherTaskFn(void*) {
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        _taskBusy = true;
+        if (_taskCmd == 2) geocodeCity(_taskCity);
+        if (fetchWeather(*_taskData)) {
+            weatherWasUpdated = true;
+        }
+        invalidateForecastUI();
+        _taskBusy = false;
+    }
+}
+
+void initWeatherTask(WeatherData* data) {
+    _taskData = data;
+    xTaskCreatePinnedToCore(weatherTaskFn, "weather", 12288, nullptr, 1, &_taskHandle, 0);
+}
+
+void triggerWeatherFetch() {
+    if (_taskBusy || !_taskHandle) return;
+    _taskCmd = 1;
+    xTaskNotifyGive(_taskHandle);
+}
+
+void triggerGeocodeAndFetch(const char* city) {
+    if (_taskBusy || !_taskHandle) return;
+    strlcpy(_taskCity, city, sizeof(_taskCity));
+    _taskCmd = 2;
+    xTaskNotifyGive(_taskHandle);
+}
+
+bool weatherTaskBusy() { return _taskBusy; }

@@ -88,7 +88,7 @@ bool syncRTCfromNTP() {
     configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
 
     struct tm timeinfo;
-    if (!getLocalTime(&timeinfo, 5000)) {
+    if (!getLocalTime(&timeinfo, 2000)) {
         Serial.println("NTP: time FAILED");
         return false;
     }

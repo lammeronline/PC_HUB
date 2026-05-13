@@ -2,6 +2,8 @@
 
 An ESP32-based environmental monitoring hub with a 320×240 TFT display, web dashboard, and PC hardware monitoring. Measures temperature, humidity, pressure, and air quality; shows a 7-day weather forecast; tracks CPU/GPU/RAM metrics from a companion Windows agent; and integrates with Telegram and MQTT.
 
+**Firmware version:** 1.1.0
+
 ---
 
 ## Features
@@ -16,8 +18,8 @@ An ESP32-based environmental monitoring hub with a 320×240 TFT display, web das
 - **Telegram bot** — `/status`, `/help`, `/reboot` commands; configurable threshold alerts with cooldown
 - **MQTT** — publishes all sensor values to a broker on a configurable interval; subscribes to a command topic
 - **OTA firmware update** — upload a new `.bin` directly from the web UI
-- **RGB LED** — visual feedback mode: status, temperature, humidity, or air quality
-- **Backlight** — manual brightness slider + auto-dim schedule (dim at 22:00–06:00, bright at 08:00–20:00)
+- **RGB LED** — configurable mode: status (orange=AP, red=offline, green=online) / temperature-based / humidity-based / air quality colour
+- **Backlight** — manual brightness slider + auto-dim schedule (configurable; defaults: dim at 22:00, bright at 08:00)
 - **AP mode with captive portal** — boots into its own Wi-Fi hotspot on first run or when credentials are missing; works with Android, iOS, Windows, and Chrome captive portal detection
 - **Static IP & configurable AP IP** — optional fixed IP address; AP mode IP configurable
 - **mDNS** — device reachable at `http://pchub.local/`
@@ -282,7 +284,7 @@ On first launch a settings window appears. Choose a transport:
 | **Wi-Fi** | Device is on the network. Enter the hostname (`pchub.local`) or IP and port (default 80). Agent posts JSON to `/api/pc`. |
 | **Serial (USB)** | Device is connected directly via USB. Select the COM port; the ESP32 listens at 115200 baud. |
 
-The agent runs in the system tray, reconnects automatically, and can be configured to start with Windows.
+The agent runs in the system tray, reconnects automatically on disconnect, and can be configured to start with Windows via a startup toggle in the settings window.
 
 ### Data sent to device
 
