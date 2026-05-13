@@ -270,18 +270,32 @@ private:
             else       drawMoon(cx, cy, dR);
             return;
         }
-        if (code <= 2) {
-            if (isDay) drawSun(cx - dR/2, cy - dR/3, dR/2 + 3);
-            else       drawMoon(cx - dR/2, cy - dR/3, dR/2 + 3);
-        }
         int cR1 = dR * 2 / 3, cR2 = dR * 5 / 9, cOff = dR / 3;
         auto cloud = [&](int bx, int by) {
+            int cr = dR / 5;
+            int flatBot = by + dR / 3;
+            // Верхние бугры
             tft->fillCircle(bx - cOff, by, cR1, C_MUTED);
             tft->fillCircle(bx + cOff, by - 1, cR2, C_MUTED);
-            tft->fillRect(bx - dR, by, dR*2, dR*2/3, C_MUTED);
+            // Тело: верхняя часть полной ширины
+            tft->fillRect(bx - dR, by, dR * 2, dR / 3 - cr, C_MUTED);
+            // Тело: нижняя часть (уже, для скруглённых углов)
+            tft->fillRect(bx - dR + cr, flatBot - cr, (dR - cr) * 2, cr, C_MUTED);
+            // Скруглённые нижние углы
+            tft->fillCircle(bx - dR + cr, flatBot - cr, cr, C_MUTED);
+            tft->fillCircle(bx + dR - cr, flatBot - cr, cr, C_MUTED);
+            // Срезать выступы верхних кругов ниже плоского дна
+            tft->fillRect(bx - dR - 1, flatBot, dR * 2 + 2, cR1, C_PANEL);
         };
-        if (code <= 3) { cloud(cx, cy + dR/9); return; }
-        cloud(cx, cy - dR*2/9);
+        if (code <= 3) {
+            cloud(cx, cy + dR / 9);
+            if (code <= 2) {
+                if (isDay) drawSun(cx - dR / 2, cy - dR / 3, dR / 2 + 3);
+                else       drawMoon(cx - dR / 2, cy - dR / 3, dR / 2 + 3);
+            }
+            return;
+        }
+        cloud(cx, cy - dR / 2);
         int py = cy + dR*2/3, dx_cloud = dR * 5 / 9;
         if (code <= 48) { for (int i=1; i<=3; i++) tft->drawLine(cx-dR+i, py+i*dR/3, cx+dR-i, py+i*dR/3, C_MUTED); }
         else if (code <= 67) { for (int i=-1; i<=1; i++) tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); }
@@ -791,14 +805,10 @@ private:
 
                 drawIconLoad(20, CY + 162, rc);
                 drawBar(bX, CY + 162, bW, bH, rf, rc);
+                snprintf(eLine, sizeof(eLine), "%.0f%%", rf * 100.0f);
+                drawText(valX, CY + 163, 1, rc, eLine, 34, C_PANEL);
 
                 snprintf(lLine, sizeof(lLine), "%.1fG/%.0fG", _pc->ram_used / 1024.0f, _pc->ram_total / 1024.0f);
-                snprintf(eLine, sizeof(eLine), "%.0f%%", rf * 100.0f);
-                drawText(valX,      CY + 163, 1, rc,      lLine, 62, C_PANEL);
-                drawText(valX + 64, CY + 163, 1, C_MUTED, eLine, 28, C_PANEL);
-
-                float freeG = (_pc->ram_total - _pc->ram_used) / 1024.0f;
-                snprintf(lLine, sizeof(lLine), "FREE  %.1fG", freeG);
                 drawText(bX, CY + 176, 1, C_MUTED, lLine, 80, C_PANEL);
             }
 

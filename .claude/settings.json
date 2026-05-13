@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cd \"c:\\\\Arduino\\\\AirMonitor\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 8)",
+      "PowerShell(cd \"c:\\\\Arduino\\\\PCHUB\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 4; cd \"c:\\\\Arduino\\\\AirMonitor\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 4)",
+      "PowerShell(cd \"c:\\\\Arduino\\\\PCHUB\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 6)",
+      "PowerShell(cd \"c:\\\\Arduino\\\\AirMonitor\"; & \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" run 2>&1 | Select-Object -Last 6)"
+    ],
+    "additionalDirectories": [
+      "c:\\Arduino\\AirMonitor\\src"
+    ]
+  }
+}
