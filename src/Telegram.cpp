@@ -61,7 +61,7 @@ static void handleCmd(const String &text) {
             m += "🌡 Температура: <b>" + String(_sensor->temperature, 1) + " °C</b>\n";
             m += "💧 Влажность: <b>"   + String(_sensor->humidity, 1)    + " %</b>\n";
             m += "🌫 Давление: <b>"    + String(_sensor->pressure, 0)    + " hPa</b>\n";
-            m += "💨 Газ: <b>"         + String(_sensor->gas, 0)         + " kΩ</b>\n";
+            m += "💨 Воздух IAQ: <b>"  + String(_sensor->iaq, 0)         + "</b> (CO₂ " + String(_sensor->co2, 0) + " ppm)\n";
         } else {
             m += "⚠️ BME680: нет данных\n";
         }
@@ -169,7 +169,7 @@ static void doCheckAlerts() {
     unsigned long coolMs = (unsigned long)RuntimeSettings::tgCooldownMin() * 60000UL;
     float t = _sensor->temperature;
     float h = _sensor->humidity;
-    float g = _sensor->gas;
+    float g = _sensor->iaq;
 
     if (RuntimeSettings::tgTempHiEn())
         evalAlert(_aTempHi, t >= RuntimeSettings::tgTempHi(), coolMs,
@@ -184,8 +184,8 @@ static void doCheckAlerts() {
         evalAlert(_aHumLo, h <= RuntimeSettings::tgHumLo(), coolMs,
                   "💧 Низкая влажность: %.1f%% (порог %.1f%%)", h, RuntimeSettings::tgHumLo());
     if (RuntimeSettings::tgGasLoEn())
-        evalAlert(_aGasLo, g <= RuntimeSettings::tgGasLo(), coolMs,
-                  "💨 Плохой воздух: %.0f kΩ (порог %.0f kΩ)", g, RuntimeSettings::tgGasLo());
+        evalAlert(_aGasLo, g >= RuntimeSettings::tgGasLo(), coolMs,
+                  "💨 Плохой воздух IAQ: %.0f (порог %.0f)", g, RuntimeSettings::tgGasLo());
 }
 
 // ── FreeRTOS task (runs on core 0) ────────────────────────────────────────────

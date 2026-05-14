@@ -33,7 +33,8 @@ struct HistoryPoint {
     float temperature = 0.0f;
     float humidity = 0.0f;
     float pressure = 0.0f;
-    float gas = 0.0f;
+    float gas = 0.0f;   // raw kΩ (from SD log)
+    float iaq = 0.0f;   // IAQ 0-500 (live BSEC)
 };
 
 template <size_t N>
@@ -66,6 +67,7 @@ struct HistoryAccumulator {
     float humiditySum = 0.0f;
     float pressureSum = 0.0f;
     float gasSum = 0.0f;
+    float iaqSum = 0.0f;
 };
 
 static HistoryRing<288> _hist24;
@@ -94,6 +96,7 @@ static HistoryPoint makeHistoryPoint(uint32_t ts, const SensorData &sensor) {
     p.humidity = sensor.humidity;
     p.pressure = sensor.pressure;
     p.gas = sensor.gas;
+    p.iaq = sensor.iaq;
     return p;
 }
 
@@ -108,6 +111,7 @@ static void flushHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
     p.humidity = acc.humiditySum / acc.count;
     p.pressure = acc.pressureSum / acc.count;
     p.gas = acc.gasSum / acc.count;
+    p.iaq = acc.iaqSum / acc.count;
     ring.push(p);
     rev++;
 }
@@ -127,6 +131,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
         acc.humiditySum = sensor.humidity;
         acc.pressureSum = sensor.pressure;
         acc.gasSum = sensor.gas;
+        acc.iaqSum = sensor.iaq;
         ring.push(makeHistoryPoint(nowSec, sensor));
         rev++;
         return;
@@ -140,6 +145,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
         acc.humiditySum = sensor.humidity;
         acc.pressureSum = sensor.pressure;
         acc.gasSum = sensor.gas;
+        acc.iaqSum = sensor.iaq;
         return;
     }
 
@@ -148,6 +154,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
     acc.humiditySum += sensor.humidity;
     acc.pressureSum += sensor.pressure;
     acc.gasSum += sensor.gas;
+    acc.iaqSum += sensor.iaq;
 }
 
 static void updateHistory() {
@@ -302,6 +309,12 @@ static void sendHistoryJson(const HistoryRing<N> &ring, const char *range) {
                              ring.at(i).gas);
         cat(tmp, n);
     }
+    catS("],\"iaq\":[");
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.0f" : "%.0f",
+                             ring.at(i).iaq);
+        cat(tmp, n);
+    }
     catS("]}");
     flush();
 }
@@ -410,10 +423,13 @@ static void handleStatus() {
     sensor["rtc_ok"]      = _sensor->rtc_ok;
     sensor["bme_ok"]      = _sensor->bme_ok;
     sensor["time"]        = _sensor->timeStr;
-    sensor["temperature"] = _sensor->temperature;
-    sensor["humidity"]    = _sensor->humidity;
-    sensor["pressure"]    = _sensor->pressure;
-    sensor["gas"]         = _sensor->gas;
+    sensor["temperature"]   = _sensor->temperature;
+    sensor["humidity"]      = _sensor->humidity;
+    sensor["pressure"]      = _sensor->pressure;
+    sensor["gas"]           = _sensor->gas;
+    sensor["iaq"]           = _sensor->iaq;
+    sensor["iaq_accuracy"]  = _sensor->iaq_accuracy;
+    sensor["co2"]           = _sensor->co2;
 
     JsonObject weather = doc["weather"].to<JsonObject>();
     float apiWindSpeed = weatherWindForApi();

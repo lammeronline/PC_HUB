@@ -2,14 +2,13 @@
 #include "Config.h"
 #include "RuntimeSettings.h"
 #include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BME680.h>
+#include "bsec.h"
 #include <RTClib.h>
 #include <WiFi.h>
 #include <time.h>
 
-Adafruit_BME680 bme;
-RTC_DS3231 rtc;
+static Bsec       _bme;
+static RTC_DS3231 rtc;
 
 static bool _bme_found = false;
 static bool _rtc_found = false;
@@ -17,7 +16,7 @@ static bool _rtc_found = false;
 void initSensors() {
     Wire.begin(I2C_SDA, I2C_SCL);
 
-    // Инициализация RTC
+    // RTC DS3231
     if (!rtc.begin(&Wire)) {
         Serial.println("RTC: FAILED");
     } else {
@@ -26,17 +25,32 @@ void initSensors() {
         if (rtc.lostPower()) rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     }
 
-    // Инициализация BME680
-    if (!bme.begin(0x76, &Wire) && !bme.begin(0x77, &Wire)) {
-        Serial.println("BME680: FAILED");
+    // BME680 via BSEC — try 0x76 then 0x77
+    _bme.begin(0x76, Wire);
+    if (_bme.bsecStatus != BSEC_OK || _bme.bme68xStatus != BME68X_OK)
+        _bme.begin(0x77, Wire);
+
+    Serial.printf("BME680 BSEC init: bsec=%d bme68x=%d\n", _bme.bsecStatus, _bme.bme68xStatus);
+
+    if (_bme.bsecStatus == BSEC_OK && _bme.bme68xStatus == BME68X_OK) {
+        bsec_virtual_sensor_t sensors[] = {
+            BSEC_OUTPUT_IAQ,
+            BSEC_OUTPUT_CO2_EQUIVALENT,
+            BSEC_OUTPUT_BREATH_VOC_EQUIVALENT,
+            BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE,
+            BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY,
+            BSEC_OUTPUT_RAW_PRESSURE,
+            BSEC_OUTPUT_RAW_GAS,
+        };
+        _bme.updateSubscription(sensors, sizeof(sensors) / sizeof(sensors[0]), BSEC_SAMPLE_RATE_LP);
+        if (_bme.bsecStatus == BSEC_OK) {
+            _bme_found = true;
+            Serial.println("BME680 BSEC: OK");
+        } else {
+            Serial.printf("BME680 BSEC subscription FAILED: bsec=%d bme68x=%d\n", _bme.bsecStatus, _bme.bme68xStatus);
+        }
     } else {
-        _bme_found = true;
-        Serial.println("BME680: OK");
-        bme.setTemperatureOversampling(BME680_OS_8X);
-        bme.setHumidityOversampling(BME680_OS_2X);
-        bme.setPressureOversampling(BME680_OS_4X);
-        bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-        bme.setGasHeater(320, 150);
+        Serial.printf("BME680 BSEC: FAILED (bsec=%d bme68x=%d)\n", _bme.bsecStatus, _bme.bme68xStatus);
     }
 }
 
@@ -57,7 +71,7 @@ bool connectWiFi() {
             WiFi.config(ip, gw, sn, dns);
         }
     } else {
-        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE); // DHCP
+        WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
     }
 
     WiFi.begin(ssid.c_str(), RuntimeSettings::wifiPassword().c_str());
@@ -79,10 +93,7 @@ bool connectWiFi() {
 }
 
 bool syncRTCfromNTP() {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("NTP: no WiFi");
-        return false;
-    }
+    if (WiFi.status() != WL_CONNECTED) return false;
 
     String ntpServer = RuntimeSettings::ntpServer();
     configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
@@ -104,7 +115,6 @@ bool syncRTCfromNTP() {
         ));
     }
 
-    // WiFi не отключаем — нужен для запросов погоды
     Serial.println("NTP: OK");
     return true;
 }
@@ -114,29 +124,36 @@ uint32_t getRTCUnixTime() {
     return rtc.now().unixtime();
 }
 
-// Функция обновления данных, заполняет нашу структуру
 void updateSensors(SensorData &data) {
     data.rtc_ok = _rtc_found;
-    data.bme_ok = false;
 
     if (_rtc_found) {
         DateTime now = rtc.now();
-        char timeBuf[32];
-        snprintf(timeBuf, sizeof(timeBuf), "%02d.%02d.%04d  %02d:%02d:%02d",
+        snprintf(data.timeStr, sizeof(data.timeStr), "%02d.%02d.%04d  %02d:%02d:%02d",
                  now.day(), now.month(), now.year(),
                  now.hour(), now.minute(), now.second());
-        strncpy(data.timeStr, timeBuf, sizeof(data.timeStr));
-        data.weekday = now.dayOfTheWeek();   // 0=Sun … 6=Sat
+        data.weekday = now.dayOfTheWeek();
     } else {
         strncpy(data.timeStr, "--.--.----  --:--:--", sizeof(data.timeStr));
         data.weekday = 0;
     }
 
-    if (_bme_found && bme.performReading()) {
-        data.bme_ok = true;
-        data.temperature = bme.temperature + RuntimeSettings::bmeTempOffset();
-        data.humidity    = constrain(bme.humidity + RuntimeSettings::bmeHumOffset(), 0.0f, 100.0f);
-        data.pressure    = bme.pressure / 100.0f;
-        data.gas         = bme.gas_resistance / 1000.0f;
+    if (!_bme_found) {
+        data.bme_ok = false;
+        return;
     }
+
+    // run() returns true only when new data is ready (~every 3s in LP mode)
+    if (_bme.run()) {
+        data.bme_ok       = true;
+        data.temperature  = _bme.temperature + RuntimeSettings::bmeTempOffset();
+        data.humidity     = constrain(_bme.humidity + RuntimeSettings::bmeHumOffset(), 0.0f, 100.0f);
+        data.pressure     = _bme.pressure / 100.0f;
+        data.gas          = _bme.gasResistance / 1000.0f;  // raw kΩ for logging
+        data.iaq          = _bme.iaq;
+        data.iaq_accuracy = _bme.iaqAccuracy;
+        data.co2          = _bme.co2Equivalent;
+        data.voc          = _bme.breathVocEquivalent;
+    }
+    // No new data this tick — keep existing values unchanged
 }

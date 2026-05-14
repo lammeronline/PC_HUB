@@ -22,7 +22,7 @@ void offLED() {
     setLED(0, 0, 0);
 }
 
-void updateLED(float temp, float hum, float gas, bool bme_ok) {
+void updateLED(float temp, float hum, float iaq, bool bme_ok) {
     uint8_t mode = RuntimeSettings::ledMode();
 
     if (mode == 0 || !bme_ok) {
@@ -46,10 +46,10 @@ void updateLED(float temp, float hum, float gas, bool bme_ok) {
         else if (hum < 60.0f)  { r = 0;   g = 210; b = 0;   }  // green  — Normal
         else if (hum < 70.0f)  { r = 255; g = 180; b = 0;   }  // yellow — High
         else                   { r = 255; g = 110; b = 0;   }  // orange — Very high
-    } else {                                    // Качество воздуха (газ)
-        if      (gas > 150.0f) { r = 0;   g = 210; b = 0;   }  // green  — Excellent/Good
-        else if (gas > 100.0f) { r = 255; g = 180; b = 0;   }  // yellow — Moderate
-        else if (gas > 50.0f)  { r = 255; g = 110; b = 0;   }  // orange — Poor
+    } else {                                    // Качество воздуха (IAQ, меньше = лучше)
+        if      (iaq < 100.0f) { r = 0;   g = 210; b = 0;   }  // green  — Excellent/Good
+        else if (iaq < 150.0f) { r = 255; g = 180; b = 0;   }  // yellow — Moderate
+        else if (iaq < 200.0f) { r = 255; g = 110; b = 0;   }  // orange — Poor
         else                   { r = 255; g = 0;   b = 0;   }  // red    — Very poor
     }
 

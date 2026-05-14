@@ -74,6 +74,8 @@ static void publishAll() {
         pub("humidity",    String(_sensor->humidity, 1));
         pub("pressure",    String(_sensor->pressure, 0));
         pub("gas",         String(_sensor->gas, 0));
+        pub("iaq",         String(_sensor->iaq, 0));
+        pub("co2",         String(_sensor->co2, 0));
     }
     if (_weather && _weather->ok) {
         pub("outdoor/temperature", String(_weather->temperature, 1));
@@ -86,6 +88,8 @@ static void publishAll() {
         doc["humidity"]    = serialized(String(_sensor->humidity, 1));
         doc["pressure"]    = serialized(String(_sensor->pressure, 0));
         doc["gas"]         = serialized(String(_sensor->gas, 0));
+        doc["iaq"]         = serialized(String(_sensor->iaq, 0));
+        doc["co2"]         = serialized(String(_sensor->co2, 0));
     }
     if (_weather && _weather->ok) {
         doc["outdoor_temp"] = serialized(String(_weather->temperature, 1));

@@ -226,19 +226,20 @@ private:
     }
 
     // ── Хелперы ──────────────────────────────────────────────────────────────
-    uint16_t airQColor(float gas) {
-        if (gas >= 150) return C_GREEN;
-        if (gas >= 100) return C_AMBER;
-        if (gas >=  50) return C_ORANGE;
+    uint16_t airQColor(float iaq) {
+        if (iaq < 100) return C_GREEN;
+        if (iaq < 150) return C_AMBER;
+        if (iaq < 200) return C_ORANGE;
         return C_RED;
     }
 
-    const char* airQLabel(float gas) {
-        if (gas >= 300) return "Great"; 
-        if (gas >= 150) return "Good";
-        if (gas >= 100) return "Fair";
-        if (gas >=  50) return "Poor";
-        return "Bad";
+    const char* airQLabel(float iaq, uint8_t acc) {
+        if (acc == 0)   return "Warming";
+        if (iaq <  51)  return "Excellent";
+        if (iaq < 101)  return "Good";
+        if (iaq < 151)  return "Moderate";
+        if (iaq < 201)  return "Poor";
+        return "Very poor";
     }
 
     void fmtWindSpeed(char *buf, size_t sz, float kmh) {
@@ -285,7 +286,7 @@ private:
             tft->fillCircle(bx - dR + cr, flatBot - cr, cr, C_MUTED);
             tft->fillCircle(bx + dR - cr, flatBot - cr, cr, C_MUTED);
             // Срезать выступы верхних кругов ниже плоского дна
-            tft->fillRect(bx - dR - 1, flatBot, dR * 2 + 2, cR1, C_PANEL);
+            tft->fillRect(bx - dR - 1, flatBot, dR * 2 + 2, dR / 3 + 2, C_PANEL);
         };
         if (code <= 3) {
             cloud(cx, cy + dR / 9);
@@ -296,11 +297,11 @@ private:
             return;
         }
         cloud(cx, cy - dR / 2);
-        int py = cy + dR*2/3, dx_cloud = dR * 5 / 9;
+        int py = cy + dR / 6 + 2, dx_cloud = dR * 5 / 9;
         if (code <= 48) { for (int i=1; i<=3; i++) tft->drawLine(cx-dR+i, py+i*dR/3, cx+dR-i, py+i*dR/3, C_MUTED); }
         else if (code <= 67) { for (int i=-1; i<=1; i++) tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); }
         else if (code <= 77) { for (int i=-1; i<=1; i++) tft->fillCircle(cx+i*dx_cloud, py+dR*4/9, 2, TFT_WHITE); }
-        else if (code <= 82) { for (int i=-2; i<=1; i++) tft->fillRect(cx+i*dx_cloud+2, py, 2, dR*7/9, C_CYAN); }
+        else if (code <= 82) { for (int i=-2; i<=1; i++) tft->drawLine(cx+i*dx_cloud+2, py, cx+i*dx_cloud, py+dR*7/9, C_CYAN); }
         else if (code <= 86) { for (int i=-1; i<=1; i++) { if (i==0) tft->fillCircle(cx, py+dR*4/9, 2, TFT_WHITE); else tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); } }
         else {
             int bx = cx+dR/5, by = py;
@@ -485,10 +486,10 @@ private:
             drawBar(cx3-25, CY + 110, 50, 4, sensor.bme_ok ? (sensor.pressure - 950.0f) / 100.0f : 0.0f, pressCol);
 
             if (sensor.bme_ok) {
-                uint16_t ac = airQColor(sensor.gas);
+                uint16_t ac = airQColor(sensor.iaq);
                 tft->setTextColor(ac, C_PANEL);
-                tft->drawString(airQLabel(sensor.gas), cx4, CY + 98);
-                drawBar(cx4-25, CY + 110, 50, 4, sensor.gas / 300.0f, ac);
+                tft->drawString(airQLabel(sensor.iaq, sensor.iaq_accuracy), cx4, CY + 98);
+                drawBar(cx4-25, CY + 110, 50, 4, constrain(sensor.iaq / 500.0f, 0.0f, 1.0f), ac);
             } else {
                 tft->setTextColor(C_MUTED, C_PANEL);
                 tft->drawString("--", cx4, CY + 98);
@@ -585,7 +586,7 @@ private:
             uint16_t tempCol  = sensor.bme_ok ? tempColor(sensor.temperature) : C_MUTED;
             uint16_t humCol   = sensor.bme_ok ? humColor(sensor.humidity)     : C_MUTED;
             uint16_t pressCol = sensor.bme_ok ? pressColor(sensor.pressure)   : C_MUTED;
-            uint16_t airCol   = sensor.bme_ok ? airQColor(sensor.gas)         : C_MUTED;
+            uint16_t airCol   = sensor.bme_ok ? airQColor(sensor.iaq)          : C_MUTED;
 
             if (contentDirty) {
                 drawCard(8,   cY1, cW, cH, C_CYAN);
@@ -644,7 +645,7 @@ private:
             tft->drawString(line, tx1, cY2 + 27);
 
             tft->setTextColor(airCol, C_PANEL);
-            tft->drawString(sensor.bme_ok ? airQLabel(sensor.gas) : "--", tx2, cY2 + 27);
+            tft->drawString(sensor.bme_ok ? airQLabel(sensor.iaq, sensor.iaq_accuracy) : "--", tx2, cY2 + 27);
 
             tft->setTextPadding(0);
             tft->setTextDatum(TL_DATUM);
@@ -855,8 +856,8 @@ private:
             if (sensor.bme_ok) {
                 snprintf(line, sizeof(line), "%.0f hPa", sensor.pressure);
                 drawText(20, CY + 116, 1, C_TEXT, line, 78, C_PANEL);
-                snprintf(line, sizeof(line), "%.0f kOhm", sensor.gas);
-                drawText(98, CY + 116, 1, airQColor(sensor.gas), line, 48, C_PANEL);
+                snprintf(line, sizeof(line), "IAQ %.0f", sensor.iaq);
+                drawText(98, CY + 116, 1, airQColor(sensor.iaq), line, 48, C_PANEL);
             } else {
                 drawText(20, CY + 116, 1, C_RED, "OFFLINE", 126, C_PANEL);
             }
@@ -930,7 +931,7 @@ private:
         if (sensor.bme_ok) {
             snprintf(line, sizeof(line), "%+.1fC  %d%%", sensor.temperature, (int)sensor.humidity);
             drawRow(18, CY + 82, "BME", line, C_GREEN);
-            snprintf(line, sizeof(line), "%.0fhPa %.0fk", sensor.pressure, sensor.gas);
+            snprintf(line, sizeof(line), "%.0fhPa IAQ%.0f", sensor.pressure, sensor.iaq);
             drawRow(18, CY + 95, "AIR", line, C_MUTED);
         } else {
             drawRow(18, CY + 82, "BME", "OFFLINE", C_RED);

@@ -30,7 +30,7 @@ static float    _tgHumHi      = 75.0f;
 static bool     _tgHumLoEn    = false;
 static float    _tgHumLo      = 30.0f;
 static bool     _tgGasLoEn    = false;
-static float    _tgGasLo      = 50.0f;
+static float    _tgGasLo      = 150.0f;
 static uint16_t _tgCooldownMin = 10;
 static bool    _ntpEnabled       = true;
 static bool    _ntpSyncOnBoot    = true;
@@ -120,7 +120,7 @@ void reload() {
     _tgHumLoEn    = prefs.getBool("tg_hlo_en", false);
     _tgHumLo      = prefs.getFloat("tg_hlo", 30.0f);
     _tgGasLoEn    = prefs.getBool("tg_glo_en", false);
-    _tgGasLo      = prefs.getFloat("tg_glo", 50.0f);
+    _tgGasLo      = prefs.getFloat("tg_glo", 150.0f);
     _tgCooldownMin   = (uint16_t)prefs.getUInt("tg_cooldown", 10);
     _staticIpEnabled = prefs.getBool("ip_static", false);
     _staticIp        = prefs.getString("static_ip", "");

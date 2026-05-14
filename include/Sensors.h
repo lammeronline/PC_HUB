@@ -10,7 +10,11 @@ struct SensorData {
     float   temperature = 0.0f;
     float   humidity    = 0.0f;
     float   pressure    = 0.0f;
-    float   gas         = 0.0f;
+    float   gas          = 0.0f;   // raw resistance kΩ (for logging)
+    float   iaq          = 0.0f;   // IAQ 0–500 (lower = better)
+    uint8_t iaq_accuracy = 0;      // 0=warming up, 1=low, 2=medium, 3=high
+    float   co2          = 0.0f;   // CO₂ equivalent ppm
+    float   voc          = 0.0f;   // breath VOC equivalent ppm
 };
 
 // Объявляем функции, которые будем вызывать из main
