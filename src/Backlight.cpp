@@ -36,21 +36,31 @@ void setBrightness(uint8_t percent, bool save) {
     if (save) RuntimeSettings::saveBacklight(_brightness);
 }
 
-// Returns target brightness (15–85%) for a given time-of-day (minutes since midnight)
+// Returns target brightness for a given time-of-day (minutes since midnight)
 static uint8_t targetForMinutes(int t) {
-    const uint8_t DIM    = 15;
-    const uint8_t BRIGHT = 85;
-    const int DAWN_S = 6  * 60;  // 360
-    const int DAWN_E = 8  * 60;  // 480
-    const int DUSK_S = 20 * 60;  // 1200
-    const int DUSK_E = 22 * 60;  // 1320
-    if (t >= DAWN_S && t < DAWN_E)
-        return DIM + (uint8_t)((long)(BRIGHT - DIM) * (t - DAWN_S) / (DAWN_E - DAWN_S));
-    if (t >= DAWN_E && t < DUSK_S)
-        return BRIGHT;
-    if (t >= DUSK_S && t < DUSK_E)
-        return BRIGHT - (uint8_t)((long)(BRIGHT - DIM) * (t - DUSK_S) / (DUSK_E - DUSK_S));
-    return DIM;
+    uint8_t dim    = RuntimeSettings::backlightMin();
+    uint8_t bright = RuntimeSettings::backlightMax();
+    int dawnS = RuntimeSettings::backlightDawnStart();
+    int dawnE = RuntimeSettings::backlightDawnEnd();
+    int duskS = RuntimeSettings::backlightDuskStart();
+    int duskE = RuntimeSettings::backlightDuskEnd();
+
+    if (t >= dawnS && t < dawnE && dawnE > dawnS)
+        return dim + (uint8_t)((long)(bright - dim) * (t - dawnS) / (dawnE - dawnS));
+    if (t >= dawnE && t < duskS)
+        return bright;
+    if (t >= duskS && t < duskE && duskE > duskS)
+        return bright - (uint8_t)((long)(bright - dim) * (t - duskS) / (duskE - duskS));
+    return dim;
+}
+
+// Adaptive step: large delta → fast approach, small delta → smooth finish
+static uint8_t stepToward(uint8_t current, uint8_t target) {
+    if (current == target) return current;
+    uint8_t delta = current > target ? current - target : target - current;
+    uint8_t step  = delta >= 20 ? 5 : delta >= 10 ? 3 : delta >= 3 ? 2 : 1;
+    if (step > delta) step = delta;
+    return current < target ? current + step : current - step;
 }
 
 // timeStr format: "DD.MM.YYYY  HH:MM:SS" — hours at [12], minutes at [15]
@@ -59,8 +69,8 @@ void autoUpdate(const char* timeStr) {
     int h = (timeStr[12] - '0') * 10 + (timeStr[13] - '0');
     int m = (timeStr[15] - '0') * 10 + (timeStr[16] - '0');
     uint8_t target = targetForMinutes(h * 60 + m);
-    if (_brightness < target)      apply(_brightness + 1);
-    else if (_brightness > target) apply(_brightness - 1);
+    uint8_t next   = stepToward(_brightness, target);
+    if (next != _brightness) apply(next);
 }
 
 uint8_t brightness() {

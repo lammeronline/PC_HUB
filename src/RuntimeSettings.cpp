@@ -50,6 +50,12 @@ static String   _mqttPrefix     = "pchub";
 static uint16_t _mqttIntervalSec = 60;
 static float    _bmeTempOffset   = 0.0f;
 static float    _bmeHumOffset    = 0.0f;
+static uint8_t  _backlightMin   = 15;
+static uint8_t  _backlightMax   = 85;
+static uint16_t _backlightDawnStart = 360;   // 06:00
+static uint16_t _backlightDawnEnd   = 480;   // 08:00
+static uint16_t _backlightDuskStart = 1200;  // 20:00
+static uint16_t _backlightDuskEnd   = 1320;  // 22:00
 
 static long clampOffset(long offsetSec) {
     if (offsetSec < -12L * 3600L) return -12L * 3600L;
@@ -137,6 +143,13 @@ void reload() {
     _mqttIntervalSec = (uint16_t)prefs.getUInt("mqtt_intv", 60);
     _bmeTempOffset   = prefs.getFloat("bme_t_off", 0.0f);
     _bmeHumOffset    = prefs.getFloat("bme_h_off", 0.0f);
+    _backlightMin   = clampPercent(prefs.getUInt("bl_min",  15));
+    _backlightMax   = clampPercent(prefs.getUInt("bl_max",  85));
+    _backlightDawnStart = (uint16_t)min(prefs.getUInt("bl_dawn_s", 360),  1439u);
+    _backlightDawnEnd   = (uint16_t)min(prefs.getUInt("bl_dawn_e", 480),  1439u);
+    _backlightDuskStart = (uint16_t)min(prefs.getUInt("bl_dusk_s", 1200), 1439u);
+    _backlightDuskEnd   = (uint16_t)min(prefs.getUInt("bl_dusk_e", 1320), 1439u);
+    if (_backlightMin >= _backlightMax) { _backlightMin = 15; _backlightMax = 85; }
     prefs.end();
 }
 
@@ -324,6 +337,33 @@ void saveBmeCalibration(float tempOffset, float humOffset) {
     prefs.putFloat("bme_t_off", tempOffset);
     prefs.putFloat("bme_h_off", humOffset);
     prefs.end();
+}
+
+uint8_t  backlightMin()       { return _backlightMin; }
+uint8_t  backlightMax()       { return _backlightMax; }
+uint16_t backlightDawnStart() { return _backlightDawnStart; }
+uint16_t backlightDawnEnd()   { return _backlightDawnEnd; }
+uint16_t backlightDuskStart() { return _backlightDuskStart; }
+uint16_t backlightDuskEnd()   { return _backlightDuskEnd; }
+
+void saveBacklightSchedule(uint8_t minPct, uint8_t maxPct,
+                            uint16_t dawnStart, uint16_t dawnEnd,
+                            uint16_t duskStart, uint16_t duskEnd) {
+    if (minPct >= maxPct) return;
+    dawnStart = min(dawnStart, (uint16_t)1439);
+    dawnEnd   = min(dawnEnd,   (uint16_t)1439);
+    duskStart = min(duskStart, (uint16_t)1439);
+    duskEnd   = min(duskEnd,   (uint16_t)1439);
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putUInt("bl_min",    clampPercent(minPct));
+    prefs.putUInt("bl_max",    clampPercent(maxPct));
+    prefs.putUInt("bl_dawn_s", dawnStart);
+    prefs.putUInt("bl_dawn_e", dawnEnd);
+    prefs.putUInt("bl_dusk_s", duskStart);
+    prefs.putUInt("bl_dusk_e", duskEnd);
+    prefs.end();
+    reload();
 }
 
 bool     tgEnabled()      { return _tgEnabled; }

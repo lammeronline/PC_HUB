@@ -400,6 +400,12 @@ static void handleStatus() {
     system["backlight_pct"]        = Backlight::brightness();
     system["backlight_inverted"]   = RuntimeSettings::backlightInverted();
     system["auto_backlight"]       = RuntimeSettings::autoBacklight();
+    system["bl_min_pct"]           = RuntimeSettings::backlightMin();
+    system["bl_max_pct"]           = RuntimeSettings::backlightMax();
+    system["bl_dawn_start"]        = RuntimeSettings::backlightDawnStart();
+    system["bl_dawn_end"]          = RuntimeSettings::backlightDawnEnd();
+    system["bl_dusk_start"]        = RuntimeSettings::backlightDuskStart();
+    system["bl_dusk_end"]          = RuntimeSettings::backlightDuskEnd();
     system["led_mode"]             = RuntimeSettings::ledMode();
     system["pc_enabled"]           = RuntimeSettings::pcEnabled();
     system["ntp_enabled"]          = RuntimeSettings::ntpEnabled();
@@ -671,6 +677,20 @@ static void handleSettingsPost() {
 
     if (doc["weather_log_enabled"].is<bool>()) {
         RuntimeSettings::saveWeatherLogEnabled(doc["weather_log_enabled"].as<bool>());
+    }
+
+    if (doc["bl_min_pct"].is<int>() || doc["bl_max_pct"].is<int>() ||
+        doc["bl_dawn_start"].is<int>() || doc["bl_dawn_end"].is<int>() ||
+        doc["bl_dusk_start"].is<int>() || doc["bl_dusk_end"].is<int>()) {
+        uint8_t minPct  = (uint8_t)constrain((int)(doc["bl_min_pct"]    | (int)RuntimeSettings::backlightMin()),        0, 100);
+        uint8_t maxPct  = (uint8_t)constrain((int)(doc["bl_max_pct"]    | (int)RuntimeSettings::backlightMax()),        0, 100);
+        uint16_t dawnS  = (uint16_t)constrain((int)(doc["bl_dawn_start"] | (int)RuntimeSettings::backlightDawnStart()), 0, 1439);
+        uint16_t dawnE  = (uint16_t)constrain((int)(doc["bl_dawn_end"]   | (int)RuntimeSettings::backlightDawnEnd()),   0, 1439);
+        uint16_t duskS  = (uint16_t)constrain((int)(doc["bl_dusk_start"] | (int)RuntimeSettings::backlightDuskStart()), 0, 1439);
+        uint16_t duskE  = (uint16_t)constrain((int)(doc["bl_dusk_end"]   | (int)RuntimeSettings::backlightDuskEnd()),   0, 1439);
+        if (minPct < maxPct)
+            RuntimeSettings::saveBacklightSchedule(minPct, maxPct, dawnS, dawnE, duskS, duskE);
+        backlightChanged = true;
     }
 
     bool inApMode = _isApMode;

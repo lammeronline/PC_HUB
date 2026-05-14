@@ -49,9 +49,19 @@ namespace RuntimeSettings {
     float    tgGasLo();
     uint16_t tgCooldownMin();
 
+    uint8_t  backlightMin();
+    uint8_t  backlightMax();
+    uint16_t backlightDawnStart();  // minutes since midnight
+    uint16_t backlightDawnEnd();
+    uint16_t backlightDuskStart();
+    uint16_t backlightDuskEnd();
+
     void saveBacklight(uint8_t percent);
     void saveBacklightInverted(bool inverted);
     void saveAutoBacklight(bool enabled);
+    void saveBacklightSchedule(uint8_t minPct, uint8_t maxPct,
+                               uint16_t dawnStart, uint16_t dawnEnd,
+                               uint16_t duskStart, uint16_t duskEnd);
     void saveLedMode(uint8_t mode);
     void savePcEnabled(bool enabled);
     float bmeTempOffset();

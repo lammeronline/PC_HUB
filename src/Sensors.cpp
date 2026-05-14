@@ -202,10 +202,13 @@ void updateSensors(SensorData &data) {
         data.co2          = _bme.co2Equivalent;
         data.voc          = _bme.breathVocEquivalent;
 
-        // Save BSEC state when accuracy improves or every 6 hours at accuracy >= 2
+        // Save state when accuracy first reaches 1 or improves — so next boot converges fast
+        // Also re-save periodically every 6 h once stable (acc >= 2)
         uint8_t acc = _bme.iaqAccuracy;
         unsigned long now = millis();
-        if (acc >= 2 && (acc > _lastSavedAccuracy || now - _lastStateSave >= 6UL * 3600000UL)) {
+        bool improvedAndGood = acc >= 1 && acc > _lastSavedAccuracy;
+        bool periodicSave    = acc >= 2 && now - _lastStateSave >= 6UL * 3600000UL;
+        if (improvedAndGood || periodicSave) {
             saveBsecState();
             _lastStateSave    = now;
             _lastSavedAccuracy = acc;
