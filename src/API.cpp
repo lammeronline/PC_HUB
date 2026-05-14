@@ -35,6 +35,7 @@ struct HistoryPoint {
     float pressure = 0.0f;
     float gas = 0.0f;   // raw kΩ (from SD log)
     float iaq = 0.0f;   // IAQ 0-500 (live BSEC)
+    float co2 = 0.0f;   // CO₂ equivalent ppm (live BSEC)
 };
 
 template <size_t N>
@@ -53,6 +54,8 @@ public:
         return _buf[idx];
     }
 
+    void clear() { _head = 0; _count = 0; }
+
 private:
     HistoryPoint _buf[N];
     size_t _head = 0;
@@ -68,6 +71,7 @@ struct HistoryAccumulator {
     float pressureSum = 0.0f;
     float gasSum = 0.0f;
     float iaqSum = 0.0f;
+    float co2Sum = 0.0f;
 };
 
 static HistoryRing<288> _hist24;
@@ -97,6 +101,7 @@ static HistoryPoint makeHistoryPoint(uint32_t ts, const SensorData &sensor) {
     p.pressure = sensor.pressure;
     p.gas = sensor.gas;
     p.iaq = sensor.iaq;
+    p.co2 = sensor.co2;
     return p;
 }
 
@@ -112,6 +117,7 @@ static void flushHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
     p.pressure = acc.pressureSum / acc.count;
     p.gas = acc.gasSum / acc.count;
     p.iaq = acc.iaqSum / acc.count;
+    p.co2 = acc.co2Sum / acc.count;
     ring.push(p);
     rev++;
 }
@@ -132,6 +138,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
         acc.pressureSum = sensor.pressure;
         acc.gasSum = sensor.gas;
         acc.iaqSum = sensor.iaq;
+        acc.co2Sum = sensor.co2;
         ring.push(makeHistoryPoint(nowSec, sensor));
         rev++;
         return;
@@ -146,6 +153,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
         acc.pressureSum = sensor.pressure;
         acc.gasSum = sensor.gas;
         acc.iaqSum = sensor.iaq;
+        acc.co2Sum = sensor.co2;
         return;
     }
 
@@ -155,6 +163,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
     acc.pressureSum += sensor.pressure;
     acc.gasSum += sensor.gas;
     acc.iaqSum += sensor.iaq;
+    acc.co2Sum += sensor.co2;
 }
 
 static void updateHistory() {
@@ -206,10 +215,11 @@ void preloadHistoryFromSD() {
 
         // Формат: "DD.MM.YYYY  HH:MM:SS",rtc_ok,bme_ok,temp,hum,press,gas,...
         int dd, mm, yy, hh, mi, ss, rtc_ok, bme_ok_i;
-        float temp, hum, press, gas;
-        if (sscanf(buf, "\"%d.%d.%d  %d:%d:%d\",%d,%d,%f,%f,%f,%f",
+        float temp, hum, press, gas, co2 = 0.0f;
+        int parsed = sscanf(buf, "\"%d.%d.%d  %d:%d:%d\",%d,%d,%f,%f,%f,%f,%f",
                    &dd, &mm, &yy, &hh, &mi, &ss,
-                   &rtc_ok, &bme_ok_i, &temp, &hum, &press, &gas) != 12) continue;
+                   &rtc_ok, &bme_ok_i, &temp, &hum, &press, &gas, &co2);
+        if (parsed < 12) continue;
         if (!bme_ok_i || yy < 2020 || mm < 1 || mm > 12) continue;
 
         // Приближённое unix-время строки (без учёта секунд DST — достаточно для истории)
@@ -226,11 +236,12 @@ void preloadHistoryFromSD() {
         if (age > 30UL * 24 * 3600) continue;
 
         HistoryPoint p;
-        p.ts          = rowUnix; // абсолютный unix-timestamp
+        p.ts          = rowUnix;
         p.temperature = temp;
         p.humidity    = hum;
         p.pressure    = press;
         p.gas         = gas;
+        p.co2         = co2;
 
         // Помещаем в кольцо только если прошёл нужный интервал (decimation)
         if (age <= 24UL * 3600 && rowUnix >= next24) {
@@ -313,6 +324,12 @@ static void sendHistoryJson(const HistoryRing<N> &ring, const char *range) {
     for (size_t i = 0; i < total; i += step) {
         n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.0f" : "%.0f",
                              ring.at(i).iaq);
+        cat(tmp, n);
+    }
+    catS("],\"co2\":[");
+    for (size_t i = 0; i < total; i += step) {
+        n = (size_t)snprintf(tmp, sizeof(tmp), i ? ",%.0f" : "%.0f",
+                             ring.at(i).co2);
         cat(tmp, n);
     }
     catS("]}");
@@ -751,6 +768,13 @@ static bool removePathRecursive(const String &path) {
     return ok;
 }
 
+static void handleHistoryClear() {
+    _hist24.clear(); _hist7.clear(); _hist30.clear();
+    _acc24 = {}; _acc7 = {}; _acc30 = {};
+    _hist24Rev++; _hist7Rev++; _hist30Rev++;
+    server.send(200, "application/json", "{\"ok\":true}");
+}
+
 static void handleSdClear() {
     if (!_sdReady) {
         server.send(503, "application/json", "{\"ok\":false,\"error\":\"sd not ready\"}");
@@ -783,6 +807,12 @@ static void handleSdClear() {
     root.close();
 
     initLogger(_sdReady);
+
+    // Reset in-memory history so the charts don't show stale data after SD clear
+    _hist24.clear(); _hist7.clear(); _hist30.clear();
+    _acc24 = {}; _acc7 = {}; _acc30 = {};
+    _hist24Rev++; _hist7Rev++; _hist30Rev++;
+
     server.send(ok ? 200 : 500, "application/json",
                 ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"clear failed\"}");
 }
@@ -1098,7 +1128,8 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/log",         HTTP_GET,  handleLog);
     server.on("/api/weather_log", HTTP_GET,  handleWeatherLog);
     server.on("/api/ota",    HTTP_POST, handleOtaDone, handleOtaUpload);
-    server.on("/api/sd/clear", HTTP_POST, handleSdClear);
+    server.on("/api/sd/clear",      HTTP_POST, handleSdClear);
+    server.on("/api/history/clear", HTTP_POST, handleHistoryClear);
     server.on("/api/reboot",        HTTP_POST, handleReboot);
     server.on("/api/pc",            HTTP_POST, handlePCPost);
     server.on("/api/telegram",      HTTP_GET,  handleTelegramGet);

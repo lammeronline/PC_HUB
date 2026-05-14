@@ -26,7 +26,7 @@ bool initLogger(bool sdReady) {
     }
 
     if (needsHeader || file.size() == 0) {
-        file.println("time,rtc_ok,bme_ok,temp_c,humidity_pct,pressure_hpa,gas_kohm,weather_ok,out_temp_c,out_humidity_pct,out_wind_kmh,out_weather_code");
+        file.println("time,rtc_ok,bme_ok,temp_c,humidity_pct,pressure_hpa,gas_kohm,co2_ppm,weather_ok,out_temp_c,out_humidity_pct,out_wind_kmh,out_weather_code");
     }
     file.close();
 
@@ -66,7 +66,7 @@ void logReading(const SensorData &sensor, const WeatherData &weather) {
         return;
     }
 
-    file.printf("\"%s\",%d,%d,%.2f,%.2f,%.2f,%.2f,%d,%.2f,%d,%.2f,%d\n",
+    file.printf("\"%s\",%d,%d,%.2f,%.2f,%.2f,%.2f,%.0f,%d,%.2f,%d,%.2f,%d\n",
                 sensor.timeStr,
                 sensor.rtc_ok ? 1 : 0,
                 sensor.bme_ok ? 1 : 0,
@@ -74,6 +74,7 @@ void logReading(const SensorData &sensor, const WeatherData &weather) {
                 sensor.humidity,
                 sensor.pressure,
                 sensor.gas,
+                sensor.co2,
                 weather.ok ? 1 : 0,
                 weather.temperature,
                 (int)weather.humidity,

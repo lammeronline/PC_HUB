@@ -248,65 +248,143 @@ private:
     }
 
     void drawSun(int cx, int cy, int R) {
-        tft->fillCircle(cx, cy, R - 2, C_AMBER);
-        const float dx[] = {1.0f, 0.707f, 0.0f, -0.707f, -1.0f, -0.707f, 0.0f, 0.707f};
-        const float dy[] = {0.0f, 0.707f, 1.0f, 0.707f, 0.0f, -0.707f, -1.0f, -0.707f};
-        for (int i = 0; i < 8; i++) {
-            tft->drawLine(cx + (int)(R*dx[i]), cy + (int)(R*dy[i]), cx + (int)((R+R/2)*dx[i]), cy + (int)((R+R/2)*dy[i]), C_AMBER);
-        }
+        int core = max(2, R * 5 / 8);
+        tft->fillCircle(cx, cy, core, C_AMBER);
+        const float dx[] = {1.f,.707f,0.f,-.707f,-1.f,-.707f, 0.f, .707f};
+        const float dy[] = {0.f,.707f,1.f, .707f, 0.f,-.707f,-1.f,-.707f};
+        for (int i = 0; i < 8; i++)
+            tft->drawLine(cx+(int)((core+2)*dx[i]), cy+(int)((core+2)*dy[i]),
+                          cx+(int)(R*dx[i]),         cy+(int)(R*dy[i]), C_AMBER);
     }
 
     void drawMoon(int cx, int cy, int R) {
-        tft->fillCircle(cx, cy, R - 2, C_TEXT);
-        tft->fillCircle(cx + R / 3, cy - R / 4, R - 2, C_PANEL);
+        int r = max(2, R * 3 / 4);
+        tft->fillCircle(cx - R/8, cy, r, C_AMBER);
+        tft->fillCircle(cx + R/4, cy - R/5, r, C_PANEL);
+        if (R >= 6) {
+            int sx = cx + R*4/5, sy = cy - R*2/5;
+            tft->drawLine(sx-1, sy, sx+1, sy, C_AMBER);
+            tft->drawLine(sx, sy-1, sx, sy+1, C_AMBER);
+        }
+        if (R >= 11) {
+            int sx2 = cx + R*3/5, sy2 = cy + R*2/5;
+            tft->drawLine(sx2-1, sy2, sx2+1, sy2, C_AMBER);
+            tft->drawLine(sx2, sy2-1, sx2, sy2+1, C_AMBER);
+        }
     }
 
     // R = fill/clear radius; dR = draw radius (defaults to R, can be larger for bigger icon in same clear zone)
     void drawWeatherIcon(int cx, int cy, int code, bool isDay, int R = 9, int dR = -1) {
         if (dR < 0) dR = R;
-        tft->fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4, C_PANEL);
+        tft->fillRect(cx - R*2, cy - R*2, R*4, R*4, C_PANEL);
         if (code < 0) { tft->drawLine(cx - dR/2, cy, cx + dR/2, cy, C_MUTED); return; }
+
+        // ── Ясно (0) ──────────────────────────────────────────────────────
         if (code == 0) {
-            if (isDay) drawSun(cx, cy, dR);
-            else       drawMoon(cx, cy, dR);
+            isDay ? drawSun(cx, cy, dR) : drawMoon(cx, cy, dR);
             return;
         }
-        int cR1 = dR * 2 / 3, cR2 = dR * 5 / 9, cOff = dR / 3;
+
+        // ── Облако: rounded body + два верхних бугра, без clipping ─────────
         auto cloud = [&](int bx, int by) {
-            int cr = dR / 5;
-            int flatBot = by + dR / 3;
-            // Верхние бугры
-            tft->fillCircle(bx - cOff, by, cR1, C_MUTED);
-            tft->fillCircle(bx + cOff, by - 1, cR2, C_MUTED);
-            // Тело: верхняя часть полной ширины
-            tft->fillRect(bx - dR, by, dR * 2, dR / 3 - cr, C_MUTED);
-            // Тело: нижняя часть (уже, для скруглённых углов)
-            tft->fillRect(bx - dR + cr, flatBot - cr, (dR - cr) * 2, cr, C_MUTED);
-            // Скруглённые нижние углы
-            tft->fillCircle(bx - dR + cr, flatBot - cr, cr, C_MUTED);
-            tft->fillCircle(bx + dR - cr, flatBot - cr, cr, C_MUTED);
-            // Срезать выступы верхних кругов ниже плоского дна
-            tft->fillRect(bx - dR - 1, flatBot, dR * 2 + 2, dR / 3 + 2, C_PANEL);
+            int cr  = max(1, dR / 4);
+            int cR1 = dR * 3 / 5;
+            int cR2 = dR * 2 / 5;
+            int bot = by + cR1;
+            tft->fillRoundRect(bx - dR, by, dR * 2, bot - by, cr, C_CYAN);
+            tft->fillCircle(bx + dR/8,   by - dR/6, cR1, C_CYAN);
+            tft->fillCircle(bx - dR*2/5, by,        cR2, C_CYAN);
         };
+
+        // ── Малооблачно / Пасмурно (1-3) ──────────────────────────────────
+        // Солнце/луна рисуется первой — облако перекрывает снизу
         if (code <= 3) {
-            cloud(cx, cy + dR / 9);
-            if (code <= 2) {
-                if (isDay) drawSun(cx - dR / 2, cy - dR / 3, dR / 2 + 3);
-                else       drawMoon(cx - dR / 2, cy - dR / 3, dR / 2 + 3);
+            if (code <= 2)
+                isDay ? drawSun(cx - dR*2/5, cy - dR/3, dR/2 + 2)
+                      : drawMoon(cx - dR*2/5, cy - dR/3, dR/2 + 2);
+            cloud(cx, cy + dR/9);
+            return;
+        }
+
+        // ── Туман / Дымка (45-48) — горизонтальные слои ───────────────────
+        if (code <= 48) {
+            int step = max(3, dR*4/9);
+            int y0   = cy - step + step/4;
+            for (int i = 0; i < 4; i++) {
+                int hw = (i % 2 == 0) ? dR*6/5 : dR*4/5;
+                tft->drawLine(cx - hw, y0 + i*step, cx + hw, y0 + i*step, C_CYAN);
             }
             return;
         }
-        cloud(cx, cy - dR / 2);
-        int py = cy + dR / 6 + 2, dx_cloud = dR * 5 / 9;
-        if (code <= 48) { for (int i=1; i<=3; i++) tft->drawLine(cx-dR+i, py+i*dR/3, cx+dR-i, py+i*dR/3, C_MUTED); }
-        else if (code <= 67) { for (int i=-1; i<=1; i++) tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); }
-        else if (code <= 77) { for (int i=-1; i<=1; i++) tft->fillCircle(cx+i*dx_cloud, py+dR*4/9, 2, TFT_WHITE); }
-        else if (code <= 82) { for (int i=-2; i<=1; i++) tft->drawLine(cx+i*dx_cloud+2, py, cx+i*dx_cloud, py+dR*7/9, C_CYAN); }
-        else if (code <= 86) { for (int i=-1; i<=1; i++) { if (i==0) tft->fillCircle(cx, py+dR*4/9, 2, TFT_WHITE); else tft->drawLine(cx+i*dx_cloud, py, cx+i*dx_cloud-2, py+dR*7/9, C_CYAN); } }
-        else {
-            int bx = cx+dR/5, by = py;
-            tft->fillTriangle(bx, by, bx-dR/2, by+dR/2, bx+dR/5, by+dR/2, C_AMBER);
-            tft->fillTriangle(bx-dR/5, by+dR*4/9, bx-dR*2/3, by+dR, bx+dR/3, by+dR*4/9, C_AMBER);
+
+        // Все дальнейшие: облако сверху + осадки снизу
+        cloud(cx, cy - dR/2);
+        int py = cy + dR/6 + 2;
+        int hw = dR - dR/5;
+
+        // Хелпер: капля
+        auto drop = [&](int x0, int lean, int len) {
+            tft->drawLine(x0, py, x0 + lean, py + len, C_CYAN);
+            tft->fillCircle(x0 + lean, py + len + 1, 1, C_CYAN);
+        };
+
+        // ── Дождь / Морось (51-67) — 4 вертикальных капли ─────────────────
+        if (code <= 67) {
+            int len = max(3, dR*6/9);
+            int nD  = (dR >= 8) ? 4 : 3;
+            for (int i = 0; i < nD; i++) {
+                int x = (nD > 1) ? cx - hw + i * hw*2 / (nD-1) : cx;
+                drop(x, -1, len);
+            }
+            return;
+        }
+
+        // ── Снег (71-77) — снежинки ───────────────────────────────────────
+        if (code <= 77) {
+            int sr = max(2, dR/4), sp = dR*2/3;
+            for (int i = -1; i <= 1; i++) {
+                int sx = cx + i*sp, sy = py + dR/4;
+                int d  = sr*7/10;
+                tft->drawLine(sx-sr, sy,   sx+sr, sy,   TFT_WHITE);
+                tft->drawLine(sx,   sy-sr, sx,   sy+sr, TFT_WHITE);
+                tft->drawLine(sx-d, sy-d,  sx+d, sy+d,  TFT_WHITE);
+                tft->drawLine(sx+d, sy-d,  sx-d, sy+d,  TFT_WHITE);
+            }
+            return;
+        }
+
+        // ── Ливень (80-82) — веер капель ──────────────────────────────────
+        if (code <= 82) {
+            int len = max(3, dR*7/9);
+            int nD  = (dR >= 8) ? 4 : 3;
+            for (int i = 0; i < nD; i++) {
+                int x0   = (nD > 1) ? cx - hw + i * hw*2 / (nD-1) : cx;
+                int lean = (x0 - cx) / 4;
+                drop(x0, lean, len);
+            }
+            return;
+        }
+
+        // ── Снежный ливень (85-86) — снежинки по бокам + капля в центре ───
+        if (code <= 86) {
+            int sr = max(2, dR/4), len = max(3, dR*6/9), sp = dR*2/3;
+            for (int side = -1; side <= 1; side += 2) {
+                int sx = cx + side*sp, sy = py + dR/4, d = sr*7/10;
+                tft->drawLine(sx-sr, sy,   sx+sr, sy,   TFT_WHITE);
+                tft->drawLine(sx,   sy-sr, sx,   sy+sr, TFT_WHITE);
+                tft->drawLine(sx-d, sy-d,  sx+d, sy+d,  TFT_WHITE);
+                tft->drawLine(sx+d, sy-d,  sx-d, sy+d,  TFT_WHITE);
+            }
+            drop(cx, -1, len);
+            return;
+        }
+
+        // ── Гроза (95+) — заполненная молния ─────────────────────────────
+        {
+            int bw = max(2, dR*3/8), bh = max(4, dR*3/4);
+            int ty = py, my = py + bh/2, ey = py + bh;
+            tft->fillTriangle(cx+bw, ty,  cx, ty,  cx, my,  C_AMBER);
+            tft->fillTriangle(cx,    my,  cx, ey,  cx-bw, ey, C_AMBER);
         }
     }
 
@@ -488,10 +566,12 @@ private:
             if (sensor.bme_ok) {
                 uint16_t ac = airQColor(sensor.iaq);
                 tft->setTextColor(ac, C_PANEL);
+                tft->setTextPadding(70);
                 tft->drawString(airQLabel(sensor.iaq, sensor.iaq_accuracy), cx4, CY + 98);
                 drawBar(cx4-25, CY + 110, 50, 4, constrain(sensor.iaq / 500.0f, 0.0f, 1.0f), ac);
             } else {
                 tft->setTextColor(C_MUTED, C_PANEL);
+                tft->setTextPadding(70);
                 tft->drawString("--", cx4, CY + 98);
                 tft->fillRect(cx4-25, CY + 110, 50, 4, C_STROKE);
             }
@@ -644,8 +724,11 @@ private:
             tft->setTextColor(pressCol, C_PANEL);
             tft->drawString(line, tx1, cY2 + 27);
 
+            tft->setTextFont(2);
             tft->setTextColor(airCol, C_PANEL);
-            tft->drawString(sensor.bme_ok ? airQLabel(sensor.iaq, sensor.iaq_accuracy) : "--", tx2, cY2 + 27);
+            tft->setTextPadding(tPad);
+            tft->drawString(sensor.bme_ok ? airQLabel(sensor.iaq, sensor.iaq_accuracy) : "--", tx2, cY2 + 34);
+            tft->setTextFont(4);
 
             tft->setTextPadding(0);
             tft->setTextDatum(TL_DATUM);

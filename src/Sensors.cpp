@@ -6,12 +6,54 @@
 #include <RTClib.h>
 #include <WiFi.h>
 #include <time.h>
+#include <Preferences.h>
 
-static Bsec       _bme;
-static RTC_DS3231 rtc;
+static Bsec        _bme;
+static RTC_DS3231  rtc;
+static Preferences _prefs;
 
-static bool _bme_found = false;
-static bool _rtc_found = false;
+static bool          _bme_found        = false;
+static bool          _rtc_found        = false;
+static uint8_t       _lastSavedAccuracy = 0;
+static unsigned long _lastStateSave     = 0;
+
+// ── BSEC state NVS ───────────────────────────────────────────────────────────
+
+static void saveBsecState() {
+    uint8_t buf[BSEC_MAX_STATE_BLOB_SIZE];
+    _bme.getState(buf);
+    if (_bme.bsecStatus != BSEC_OK) return;
+    _prefs.begin("bsec", false);
+    _prefs.putBytes("state", buf, BSEC_MAX_STATE_BLOB_SIZE);
+    _prefs.end();
+    Serial.printf("BSEC: state saved (accuracy=%d)\n", _bme.iaqAccuracy);
+}
+
+static void loadBsecState() {
+    _prefs.begin("bsec", true);
+    size_t len = _prefs.getBytesLength("state");
+    if (len != BSEC_MAX_STATE_BLOB_SIZE) {
+        _prefs.end();
+        Serial.println("BSEC: no saved state, fresh calibration");
+        return;
+    }
+    uint8_t buf[BSEC_MAX_STATE_BLOB_SIZE];
+    _prefs.getBytes("state", buf, len);
+    _prefs.end();
+
+    _bme.setState(buf);
+    if (_bme.bsecStatus == BSEC_OK) {
+        Serial.println("BSEC: state restored from NVS");
+    } else {
+        Serial.printf("BSEC: state restore failed (%d), clearing NVS\n", _bme.bsecStatus);
+        _prefs.begin("bsec", false);
+        _prefs.clear();
+        _prefs.end();
+        _bme.bsecStatus = BSEC_OK;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 void initSensors() {
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -45,6 +87,7 @@ void initSensors() {
         _bme.updateSubscription(sensors, sizeof(sensors) / sizeof(sensors[0]), BSEC_SAMPLE_RATE_LP);
         if (_bme.bsecStatus == BSEC_OK) {
             _bme_found = true;
+            loadBsecState();
             Serial.println("BME680 BSEC: OK");
         } else {
             Serial.printf("BME680 BSEC subscription FAILED: bsec=%d bme68x=%d\n", _bme.bsecStatus, _bme.bme68xStatus);
@@ -99,9 +142,13 @@ bool syncRTCfromNTP() {
     configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
 
     struct tm timeinfo;
-    if (!getLocalTime(&timeinfo, 2000)) {
-        Serial.println("NTP: time FAILED");
-        return false;
+    // First attempt — network may still be settling after fresh connect
+    if (!getLocalTime(&timeinfo, 4000)) {
+        delay(1500);
+        if (!getLocalTime(&timeinfo, 4000)) {
+            Serial.println("NTP: time FAILED");
+            return false;
+        }
     }
 
     if (_rtc_found) {
@@ -154,6 +201,15 @@ void updateSensors(SensorData &data) {
         data.iaq_accuracy = _bme.iaqAccuracy;
         data.co2          = _bme.co2Equivalent;
         data.voc          = _bme.breathVocEquivalent;
+
+        // Save BSEC state when accuracy improves or every 6 hours at accuracy >= 2
+        uint8_t acc = _bme.iaqAccuracy;
+        unsigned long now = millis();
+        if (acc >= 2 && (acc > _lastSavedAccuracy || now - _lastStateSave >= 6UL * 3600000UL)) {
+            saveBsecState();
+            _lastStateSave    = now;
+            _lastSavedAccuracy = acc;
+        }
     }
     // No new data this tick — keep existing values unchanged
 }
