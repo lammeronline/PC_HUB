@@ -36,6 +36,10 @@ void handlePCSerial() {
                         _pc->gpu_vram_total = doc["gvt"] | (uint16_t)0;
                         _pc->ram_used       = doc["ru"]  | (uint32_t)0;
                         _pc->ram_total      = doc["rt"]  | (uint32_t)0;
+                        _pc->bat_pct        = (uint8_t)constrain(doc["bat"] | 0, 0, 100);
+                        _pc->bat_charge     = doc["bch"] | false;
+                        _pc->bat_ac         = doc["bac"] | false;
+                        _pc->bat_saver      = doc["bsv"] | false;
                         _pc->ok             = true;
                         _pc->lastMs         = millis();
                     }

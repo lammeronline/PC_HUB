@@ -1,12 +1,25 @@
 using System;
+using System.Management;
+using System.Runtime.InteropServices;
 using LibreHardwareMonitor.Hardware;
+using WinForms = System.Windows.Forms;
 
 namespace PCHub;
 
 public class HardwareMonitor : IDisposable
 {
+    // RootPowerKey must be IntPtr.Zero; returns S_OK (0) on success
+    [DllImport("powrprof.dll", SetLastError = false)]
+    private static extern int PowerGetEffectivePowerMode(IntPtr rootPowerKey, out uint mode);
+
+    // null = unknown, true = available, false = not on this Windows version
+    private static bool? _powerModeSupported;
+
+
     private readonly Computer _computer;
     private bool _disposed;
+
+    public bool ReadBattery { get; set; } = true;
 
     public HardwareMonitor()
     {
@@ -56,7 +69,65 @@ public class HardwareMonitor : IDisposable
             }
         }
 
+        if (ReadBattery)
+            ReadBatteryStatus(metrics);
+
         return metrics;
+    }
+
+    private static void ReadBatteryStatus(PcMetrics metrics)
+    {
+        // Path 1: WMI Win32_Battery — most reliable on laptops
+        try
+        {
+            using var searcher = new ManagementObjectSearcher(
+                "root\\cimv2", "SELECT EstimatedChargeRemaining, BatteryStatus FROM Win32_Battery");
+            foreach (ManagementObject bat in searcher.Get())
+            {
+                var charge = bat["EstimatedChargeRemaining"];
+                if (charge != null)
+                {
+                    metrics.HasBattery = true;
+                    metrics.BatteryPercent = Convert.ToSingle(charge);
+                    int status = Convert.ToInt32(bat["BatteryStatus"] ?? 0);
+                    metrics.IsOnAc = status != 1;
+                    // status 6-9 = explicitly charging; status 2 on some OEMs means
+                    // "AC/Full" but also covers active charging when battery isn't full
+                    metrics.IsCharging = status >= 6 ||
+                                         (status == 2 && metrics.BatteryPercent < 95f);
+                }
+                break;
+            }
+        }
+        catch { }
+
+        // Path 2: SystemInformation.PowerStatus fallback
+        if (!metrics.HasBattery)
+        {
+            var ps = WinForms.SystemInformation.PowerStatus;
+            float pct = ps.BatteryLifePercent;
+            if (pct >= 0f && pct <= 1.0f)
+            {
+                metrics.HasBattery     = true;
+                metrics.BatteryPercent = pct * 100f;
+                metrics.IsCharging     = (ps.BatteryChargeStatus & WinForms.BatteryChargeStatus.Charging) != 0;
+                metrics.IsOnAc         = ps.PowerLineStatus == WinForms.PowerLineStatus.Online;
+            }
+        }
+
+        if (!metrics.HasBattery) return;
+
+        // mode 0 = BatterySaver (Windows 10 1709+)
+        if (_powerModeSupported != false)
+        {
+            try
+            {
+                int hr = PowerGetEffectivePowerMode(IntPtr.Zero, out uint mode);
+                _powerModeSupported = true;
+                metrics.IsBatterySaver = hr == 0 && mode == 0;
+            }
+            catch (EntryPointNotFoundException) { _powerModeSupported = false; }
+        }
     }
 
     private static void ReadCpu(IHardware hardware, PcMetrics metrics)

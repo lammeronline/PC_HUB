@@ -9,21 +9,21 @@ An ESP32-based environmental monitoring hub with a 320×240 TFT display, web das
 ## Features
 
 - **Environmental sensors** — BME680 + BSEC algorithm measures temperature, humidity, atmospheric pressure, IAQ (0–500), CO₂ equivalent (ppm), and breath VOC (ppm). Calibration state persists in NVS and is restored on every reboot.
-- **Real-time clock** — DS3231 RTC keeps time across reboots; optionally synced via NTP on boot and/or on a configurable interval
-- **7-day weather forecast** — powered by [Open-Meteo](https://open-meteo.com/), no API key required
-- **PC hardware monitoring** — companion Windows agent sends CPU/GPU temperature, load, power, and RAM usage over Wi-Fi or USB serial
-- **TFT display** — 320×240 ST7789, four tabs: Sensors / Forecast / PC Monitor / System
-- **Web dashboard** — responsive dark-themed SPA; live sensor cards, interactive 24h/7d/30d charts, settings modal
-- **Data logging** — CSV to SD card every minute; history preloaded into charts on reboot
-- **Telegram bot** — `/status`, `/help`, `/reboot` commands; configurable threshold alerts with cooldown
-- **MQTT** — publishes all sensor values to a broker on a configurable interval; subscribes to a command topic
-- **OTA firmware update** — upload a new `.bin` directly from the web UI
-- **RGB LED** — configurable mode: off / temperature-based / humidity-based / air quality colour
-- **Adaptive auto-brightness** — PWM backlight follows a configurable time-of-day schedule with adjustable min/max brightness (%), dawn start/end, and dusk start/end times; adaptive step rate (fast convergence when far from target, smooth finish when close)
-- **AP mode with captive portal** — boots into its own Wi-Fi hotspot on first run; works with Android, iOS, Windows, and Chrome captive portal detection
-- **Static IP & configurable AP IP** — optional fixed IP address; AP mode IP configurable
-- **mDNS** — device reachable at `http://pchub.local/`
-- **Factory reset** — single button in the web UI erases all NVS settings
+- **Real-time clock** — DS3231 RTC keeps time across reboots; optionally synced via NTP on boot and/or on a configurable interval.
+- **7-day weather forecast** — powered by [Open-Meteo](https://open-meteo.com/), no API key required.
+- **PC hardware monitoring** — companion Windows agent sends CPU/GPU temperature, load, power, RAM usage, and laptop battery status over Wi-Fi or USB serial.
+- **TFT display** — 320×240 ST7789, four tabs: Sensors / Forecast / PC Monitor / System. Taskbar header shows dynamic Wi-Fi signal strength, SD card status, PC Agent status, and battery icon (laptops only).
+- **Web dashboard** — responsive dark-themed SPA; live sensor cards, interactive 24h/7d/30d charts, settings modal.
+- **Data logging** — CSV to SD card every minute; history preloaded into charts on reboot.
+- **Telegram bot** — `/status`, `/help`, `/reboot` commands; configurable threshold alerts with cooldown.
+- **MQTT** — publishes all sensor values to a broker on a configurable interval; subscribes to a command topic.
+- **OTA firmware update** — upload a new `.bin` directly from the web UI.
+- **RGB LED** — configurable mode: off / temperature-based / humidity-based / air quality colour.
+- **Adaptive auto-brightness** — PWM backlight follows a configurable time-of-day schedule with adjustable min/max brightness (%), dawn start/end, and dusk start/end times; adaptive step rate (fast convergence when far from target, smooth finish when close).
+- **AP mode with captive portal** — boots into its own Wi-Fi hotspot on first run; works with Android, iOS, Windows, and Chrome captive portal detection.
+- **Static IP & configurable AP IP** — optional fixed IP address; AP mode IP configurable.
+- **mDNS** — device reachable at `http://pchub.local/`.
+- **Factory reset** — single button in the web UI erases all NVS settings.
 
 ---
 
@@ -124,6 +124,28 @@ Edit `src/WebUI.html` — the pre-build script converts it to `src/WebUI.h` auto
 
 ---
 
+## Display
+
+### Taskbar (always visible)
+
+The top bar shows:
+- **Date and time** (left side; full `Day  HH:MM:SS  DD.MM.YYYY` on non-NOW tabs)
+- **Battery icon** *(laptops only, left of Wi-Fi)* — outline: green when on AC, grey when on battery; fill: green >60 %, amber >25 %, red ≤25 %
+- **Wi-Fi signal** — 3-level dynamic arc icon (green = connected, red = disconnected)
+- **SD card** status
+- **PC Agent** status
+
+### Tabs
+
+| Tab | Content |
+|-----|---------|
+| **NOW** | Large clock; outdoor weather (icon, temperature, wind); 4 sensor mini-cards (temp, humidity, pressure, air quality); PC mini-bar (CPU/GPU/RAM) when agent is active |
+| **FCST** | 7-day forecast table with weather icons, min/max temperature, wind speed |
+| **MONIT** | Full PC Monitor when agent is active (CPU, GPU, RAM bars with names); Local Monitor when agent is offline (room sensor, outdoor, pressure/IAQ, logger status) |
+| **SYS** | Status pills (RTC, BME, SD, WiFi); sensor/storage/WiFi/ESP32 cards with live values |
+
+---
+
 ## BME680 / BSEC calibration
 
 The BME680 raw gas resistance is processed by Bosch's BSEC algorithm to produce IAQ, CO₂ equivalent, and VOC values. BSEC requires a calibration warm-up:
@@ -217,8 +239,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
     "gas": 215.7,
     "iaq": 42.0,
     "iaq_accuracy": 2,
-    "co2": 612.0,
-    "voc": 0.52
+    "co2": 612.0
   },
   "weather": {
     "ok": true,
@@ -228,17 +249,17 @@ Base URL: `http://pchub.local` (or device IP, port 80).
   },
   "pc": {
     "ok": true,
-    "cpu_name": "Intel Core i9-13900K",
+    "cpu_name": "Intel Core i7-7700HQ",
     "cpu_temp": 65.5,
     "cpu_load": 42.3,
-    "cpu_power": 185.2,
-    "gpu_name": "NVIDIA RTX 4090",
-    "gpu_temp": 72.1,
+    "cpu_power": 35.2,
+    "gpu_name": "NVIDIA Quadro M1200",
+    "gpu_temp": 58.1,
     "gpu_load": 28.5,
-    "gpu_vram_used": 8192,
-    "gpu_vram_total": 24576,
-    "ram_used": 12288,
-    "ram_total": 32768
+    "gpu_vram_used": 1200,
+    "gpu_vram_total": 4096,
+    "ram_used": 8900,
+    "ram_total": 16200
   },
   "system": {
     "uptime_sec": 3600,
@@ -258,7 +279,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
     "bl_dusk_start": 1200,
     "bl_dusk_end": 1320,
     "pc_enabled": true,
-    "weather_city": "Kyiv",
+    "weather_city": "Moscow",
     "hist24_rev": 5,
     "hist7_rev": 2,
     "hist30_rev": 1
@@ -302,18 +323,26 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 }
 ```
 
-Resolutions: `24h` = 5-minute buckets (up to 288 points), `7d` = 1-hour (168 points), `30d` = 6-hour (720 points). History is preloaded from SD card on every boot.
+Resolutions: `24h` = 5-minute buckets (up to 288 points), `7d` = 1-hour (168 points), `30d` = 6-hour (720 points). History is preloaded from SD card on every boot; loading time scales with log file size (~30 s for a full 30-day log).
 
 ---
 
 ## PC Agent (Windows)
 
-The `PCAgent/` directory contains a .NET 8 Windows application that reads hardware metrics via [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) and sends them to the device.
+The `PCAgent/` directory contains a **.NET 10 Windows application** (WinForms, x64) that reads hardware metrics via [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) and sends them to the device.
 
-### Build
+> **Administrator rights required.** The agent manifest includes `requireAdministrator` so that LibreHardwareMonitor can install the WinRing0 kernel driver for CPU temperature and power readings.
 
-```
-dotnet build PCAgent/PCAgent.csproj -c Release
+> **Windows Defender exclusion.** Add the `PCAgent/build/` folder to Defender exclusions before first run, otherwise the WinRing0 driver (`PCAgent.sys`) will be quarantined and CPU temp/power will read as 0:
+> ```powershell
+> Add-MpPreference -ExclusionPath "D:\path\to\PCAgent\build"
+> ```
+
+### Build & publish
+
+```powershell
+cd PCAgent
+dotnet publish -c Release -o build
 ```
 
 Or open `PCAgent/PCAgent.sln` in Visual Studio 2022+.
@@ -324,25 +353,68 @@ On first launch a settings window appears. Choose a transport:
 
 | Transport | When to use |
 |-----------|-------------|
-| **Wi-Fi** | Device is on the network. Enter the hostname (`pchub.local`) or IP and port (default 80). Agent posts JSON to `/api/pc`. |
+| **Wi-Fi** | Device is on the network. Enter the hostname (`pchub.local`) or IP and port (default 80). Agent POSTs JSON to `/api/pc`. |
 | **Serial (USB)** | Device is connected directly via USB. Select the COM port; the ESP32 listens at 115200 baud. |
 
-The agent runs in the system tray, reconnects automatically on disconnect, and can be configured to start with Windows via a startup toggle in the settings window.
+Settings are saved to `%LOCALAPPDATA%\PCHub\settings.json`.
+
+| Setting | Description |
+|---------|-------------|
+| Update interval | Seconds between metric pushes (1–60, default 2) |
+| Minimize to tray on close | Keep running in the notification area |
+| Start minimized to tray | Launch hidden |
+| Send battery status to display | Enable battery icon on device (laptops only) |
 
 ### Data sent to device
 
 ```json
 {
   "type": "pc",
-  "cn": "Intel Core i9-13900K",
-  "ct": 65.5,   "cl": 42.3,  "cp": 185.2,
-  "gn": "NVIDIA RTX 4090",
-  "gt": 72.1,   "gl": 28.5,  "gvr": 8192,  "gvt": 24576,
-  "ru": 12288,  "rt": 32768
+  "cn": "Intel Core i7-7700HQ",
+  "ct": 65.5,   "cl": 42.3,  "cp": 35.2,
+  "gn": "NVIDIA Quadro M1200",
+  "gt": 58.1,   "gl": 28.5,  "gvr": 1200,  "gvt": 4096,
+  "ru": 8900,   "rt": 16200,
+  "bat": 87,    "bch": false, "bac": true,  "bsv": false
 }
 ```
 
-PC data is considered stale and cleared from the display if no update arrives for 10 seconds.
+Battery fields are only included when **Send battery status** is enabled and a battery is detected (laptop). They are omitted on desktops.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cn` | string | CPU name (max 31 chars) |
+| `ct` | float | CPU temperature (°C) |
+| `cl` | float | CPU load (%) |
+| `cp` | float | CPU package power (W) |
+| `gn` | string | GPU name (max 31 chars) |
+| `gt` | float | GPU temperature (°C) |
+| `gl` | float | GPU load (%) |
+| `gvr` | int | GPU VRAM used (MB) |
+| `gvt` | int | GPU VRAM total (MB) |
+| `ru` | int | RAM used (MB) |
+| `rt` | int | RAM total (MB) |
+| `bat` | int | Battery charge (%) — laptops only |
+| `bch` | bool | Actively charging |
+| `bac` | bool | AC power connected |
+| `bsv` | bool | Battery Saver mode active |
+
+PC data is considered stale and cleared from the display if no update arrives for **10 seconds**.
+
+### Battery icon (display)
+
+The battery icon appears in the taskbar header to the left of the Wi-Fi icon, only when `bat_pct > 0` is received:
+
+| Outline colour | Fill colour | State |
+|----------------|-------------|-------|
+| Green | Green | On AC, charge > 60 % |
+| Green | Amber | On AC, charge 25–60 % |
+| Green | Red | On AC, charge ≤ 25 % |
+| Grey | Green | On battery, charge > 60 % |
+| Grey | Amber | On battery, charge 25–60 % |
+| Grey | Red | On battery, charge ≤ 25 % |
+
+Battery Saver mode (`bsv = true`) is detected via `PowerGetEffectivePowerMode` (Windows 10 1709+).
 
 ---
 
@@ -410,9 +482,17 @@ PCHUB/
 │   └── WebUI.html            Web dashboard source (auto-built → WebUI.h)
 ├── include/
 │   ├── Config.h              Pin definitions, compile-time constants
+│   ├── PCData.h              PCData struct (PC metrics + battery)
 │   ├── Version.h             FW_VERSION string
 │   └── *.h                   Module headers
-├── PCAgent/                  Windows companion app (.NET 8, WinForms)
+├── PCAgent/                  Windows companion app (.NET 10, WinForms, x64)
+│   ├── PCAgent.csproj
+│   ├── Program.cs
+│   ├── MainForm.cs           System-tray WinForms UI
+│   ├── HardwareMonitor.cs    LHM + WMI battery reading
+│   ├── PcMetrics.cs          Data model + JSON serialisation
+│   ├── PcHubClient.cs        Wi-Fi / Serial transport
+│   └── AppSettings.cs        Settings persistence
 ├── tools/
 │   └── pre_build.py          PlatformIO pre-build hook (HTML → H)
 └── platformio.ini
@@ -422,6 +502,8 @@ PCHUB/
 
 ## Dependencies
 
+### Firmware (ESP32)
+
 | Library | Version | Purpose |
 |---------|---------|---------|
 | TFT_eSPI | ^2.5.43 | ST7789 display driver |
@@ -429,6 +511,13 @@ PCHUB/
 | RTClib | ^2.1.1 | DS3231 real-time clock |
 | ArduinoJson | ^7.0.0 | JSON serialization |
 | PubSubClient | ^2.8 | MQTT client |
+
+### PC Agent (.NET 10)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| LibreHardwareMonitorLib | 0.9.3 | CPU/GPU/RAM sensor reading |
+| System.Management | (transitive) | WMI battery detection |
 
 Weather data: [Open-Meteo](https://open-meteo.com/) — free, no API key required.
 

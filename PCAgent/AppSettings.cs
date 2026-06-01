@@ -14,6 +14,8 @@ public class AppSettings
     public int UpdateIntervalSec { get; set; } = 2;
     public bool MinimizeToTray { get; set; } = true;
     public bool StartMinimized { get; set; } = false;
+    public bool RunOnStartup { get; set; } = false;
+    public bool ShowBattery { get; set; } = true;
 
     private static readonly string SettingsDir =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PCHub");

@@ -200,6 +200,7 @@ void setup() {
     invalidateForecastUI();
     lastWeatherUpdate = millis();
     bootStatus(tft, SX, y, weatherData.ok, BG);
+    y += ROW;
 
     // ── Finish init ──────────────────────────────────────────────────────────
     updateSensors(currentData);

@@ -65,7 +65,12 @@ private:
         uint8_t sysFlags = 0xFF;
 
         // Taskbar icon state — avoids flicker by skipping redraw when unchanged
-        uint8_t taskbarIcons = 0xFF; // bit0=wifi, bit1=sd, bit2=pc
+        uint8_t taskbarIcons = 0xFF; // bit1=sd, bit2=pc
+        int8_t  wifiLevel    = 127;  // -1=disconnected, 0-3=bars; 127=uninit
+        uint8_t batPct       = 0xFF;
+        bool    batCharge    = false;
+        bool    batAc        = false;
+        bool    batSaver     = false;
 
         uint16_t offTempCol  = 0xFFFF;
         uint16_t offHumCol   = 0xFFFF;
@@ -136,6 +141,46 @@ private:
                 break;
             }
         }
+    }
+
+    // Battery icon: 16x14px (landscape)
+    // Outline: C_GREEN if on AC, C_MUTED if on battery
+    // Fill:    C_GREEN >60%, C_AMBER >25%, C_RED <=25%
+    void drawIconBattery(int x, int y, uint8_t pct, bool charging, bool ac, bool saver) {
+        tft->fillRect(x, y, 16, 14, C_HEADER);
+        if (pct == 0) return;
+
+        uint16_t outlineCol = saver ? C_AMBER : (ac ? C_GREEN : C_MUTED);
+        uint16_t fillCol    = pct > 60 ? C_GREEN :
+                              pct > 25 ? C_AMBER : C_RED;
+
+        // Outer outline (13w x 10h)
+        tft->drawRect(x+1, y+2, 13, 10, outlineCol);
+        // Terminal bump (2x4)
+        tft->fillRect(x+14, y+5, 2, 4, outlineCol);
+        // Fill background (11w x 8h inside outline)
+        tft->fillRect(x+2, y+3, 11, 8, C_BG);
+        // Proportional fill
+        int fw = constrain((int)(11 * pct / 100), 0, 11);
+        if (fw > 0) tft->fillRect(x+2, y+3, fw, 8, fillCol);
+    }
+
+    // WiFi icon через drawArc: центр (cx, cy) в нижней точке иконки.
+    // 120° сектор (300°→60° через 0°/верх) = правильный веер вверх.
+    // 3 кольца с зазорами + точка.
+    void drawIconWifi(int x, int y, bool connected, int8_t bars) {
+        tft->fillRect(x, y, 14, 14, C_HEADER);
+        const int cx = x+7, cy = y+12;
+        uint16_t col = connected ? C_GREEN : C_RED;
+        uint16_t c3 = (bars >= 3) ? col : C_MUTED;
+        uint16_t c2 = (bars >= 2) ? col : C_MUTED;
+        uint16_t c1 = (bars >= 1) ? col : C_MUTED;
+
+        // 0°=6 часов, по часовой → 120..240° = через 180° (12 часов/верх) = веер вверх
+        tft->drawArc(cx, cy, 9, 7, 120, 240, c3, C_HEADER);
+        tft->drawArc(cx, cy, 5, 3, 120, 240, c2, C_HEADER);
+        tft->drawArc(cx, cy, 1, 0, 120, 240, c1, C_HEADER);
+        tft->fillCircle(cx, cy, 1, col);
     }
 
     void drawBar(int x, int y, int w, int h, float frac, uint16_t col) {
@@ -421,13 +466,45 @@ private:
         drawText(8, 5, 2, C_MUTED, dateLine, 220, C_HEADER);
         bool wifiOk = (WiFi.status() == WL_CONNECTED);
         bool pcLive  = _pc && pcFresh(*_pc);
-        uint8_t iconBits = (wifiOk ? 0x01 : 0) | (status.sdReady ? 0x02 : 0) | (pcLive ? 0x04 : 0);
+        int right = tft->width();
+
+        // WiFi — dynamic signal strength
+        int8_t newWifiLevel;
+        if (!wifiOk) {
+            newWifiLevel = -1;
+        } else {
+            int rssi = WiFi.RSSI();
+            if      (rssi >= -60) newWifiLevel = 3;
+            else if (rssi >= -70) newWifiLevel = 2;
+            else if (rssi >= -80) newWifiLevel = 1;
+            else                  newWifiLevel = 0;
+        }
+        if (chromeDirty || newWifiLevel != cache.wifiLevel) {
+            cache.wifiLevel = newWifiLevel;
+            drawIconWifi(right - 56, 4, wifiOk, newWifiLevel);
+        }
+
+        // SD and PC icons
+        uint8_t iconBits = (status.sdReady ? 0x02 : 0) | (pcLive ? 0x04 : 0);
         if (chromeDirty || iconBits != cache.taskbarIcons) {
             cache.taskbarIcons = iconBits;
-            int right = tft->width();
-            drawStatusIcon(right - 56, 4, wifiOk ? C_GREEN : C_RED, 0);
             drawStatusIcon(right - 38, 4, status.sdReady ? C_GREEN : C_RED, 1);
             drawStatusIcon(right - 20, 4, pcLive  ? C_GREEN : C_MUTED, 4);
+        }
+
+        // Battery icon — redraws only when state changes
+        uint8_t newBatPct    = (pcLive && _pc->bat_pct > 0) ? _pc->bat_pct : 0;
+        bool    newBatCharge = pcLive && _pc->bat_charge;
+        bool    newBatAc     = pcLive && _pc->bat_ac;
+        bool    newBatSaver  = pcLive && _pc->bat_saver;
+        if (chromeDirty || newBatPct != cache.batPct ||
+            newBatCharge != cache.batCharge || newBatAc != cache.batAc ||
+            newBatSaver != cache.batSaver) {
+            cache.batPct    = newBatPct;
+            cache.batCharge = newBatCharge;
+            cache.batAc     = newBatAc;
+            cache.batSaver  = newBatSaver;
+            drawIconBattery(tft->width() - 76, 4, newBatPct, newBatCharge, newBatAc, newBatSaver);
         }
     }
 

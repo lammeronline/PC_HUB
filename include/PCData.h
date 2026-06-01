@@ -14,6 +14,10 @@ struct PCData {
     uint16_t gpu_vram_total = 0;   // MB
     uint32_t ram_used       = 0;   // MB
     uint32_t ram_total      = 0;   // MB
+    uint8_t  bat_pct        = 0;   // 0 = no battery / disabled
+    bool     bat_charge     = false;
+    bool     bat_ac         = false;
+    bool     bat_saver      = false;
     unsigned long lastMs    = 0;
 };
 

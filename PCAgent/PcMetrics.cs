@@ -22,6 +22,13 @@ public class PcMetrics
     public long RamUsedMb { get; set; }
     public long RamTotalMb { get; set; }
 
+    public bool HasBattery { get; set; }
+    public float BatteryPercent { get; set; }
+    public bool IsCharging { get; set; }
+    public bool IsOnAc { get; set; }
+    public int BatterySecondsRemaining { get; set; }
+    public bool IsBatterySaver { get; set; }
+
     /// <summary>
     /// Returns compact JSON for sending to PCHUB device.
     /// Format: {"type":"pc","ct":...,"cl":...,"cp":...,"gt":...,"gl":...,"gvr":...,"gvt":...,"ru":...,"rt":...}
@@ -46,6 +53,13 @@ public class PcMetrics
         sb.Append($"\"gvt\":{GpuVramTotalMb},");
         sb.Append($"\"ru\":{RamUsedMb},");
         sb.Append($"\"rt\":{RamTotalMb}");
+        if (HasBattery)
+        {
+            sb.Append($",\"bat\":{(int)Math.Round(BatteryPercent)}");
+            sb.Append($",\"bch\":{(IsCharging ? "true" : "false")}");
+            sb.Append($",\"bac\":{(IsOnAc ? "true" : "false")}");
+            sb.Append($",\"bsv\":{(IsBatterySaver ? "true" : "false")}");
+        }
         sb.Append("}");
         return sb.ToString();
     }

@@ -925,6 +925,10 @@ static void handlePCPost() {
     _pcData->gpu_vram_total = doc["gvt"] | (uint16_t)0;
     _pcData->ram_used       = doc["ru"]  | (uint32_t)0;
     _pcData->ram_total      = doc["rt"]  | (uint32_t)0;
+    _pcData->bat_pct        = (uint8_t)constrain(doc["bat"] | 0, 0, 100);
+    _pcData->bat_charge     = doc["bch"] | false;
+    _pcData->bat_ac         = doc["bac"] | false;
+    _pcData->bat_saver      = doc["bsv"] | false;
     _pcData->ok             = true;
     _pcData->lastMs         = millis();
     Serial.printf("[PC] CPU=%s %.0fC/%.0f%% GPU=%s %.0fC/%.0f%% RAM=%lu/%luMB\n",
