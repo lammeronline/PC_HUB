@@ -4,7 +4,6 @@ using System.Drawing.Drawing2D;
 using System.IO.Ports;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 namespace PCHub;
 
@@ -700,11 +699,27 @@ public class MainForm : Form
 
     static void SetStartupEnabled(bool enabled)
     {
-        const string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-        using var key = Registry.CurrentUser.OpenSubKey(runKey, writable: true);
-        if (key == null) return;
-        if (enabled) key.SetValue("PCHUB Agent", $"\"{Application.ExecutablePath}\"");
-        else         key.DeleteValue("PCHUB Agent", throwOnMissingValue: false);
+        const string taskName = "PCHUB Agent";
+        if (enabled)
+        {
+            string exe = Application.ExecutablePath;
+            // Create a logon task with highest privileges so the app gets admin rights at startup
+            string args = $"/create /tn \"{taskName}\" /tr \"\\\"{exe}\\\"\" /sc onlogon /rl highest /f";
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("schtasks.exe", args)
+            {
+                CreateNoWindow = true, UseShellExecute = false
+            });
+            p?.WaitForExit();
+        }
+        else
+        {
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "schtasks.exe", $"/delete /tn \"{taskName}\" /f")
+            {
+                CreateNoWindow = true, UseShellExecute = false
+            });
+            p?.WaitForExit();
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
