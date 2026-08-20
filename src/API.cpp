@@ -15,6 +15,8 @@
 #include <ESPmDNS.h>
 #include <Update.h>
 #include <time.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 static WebServer          server(80);
 static const SensorData  *_sensor  = nullptr;
@@ -89,6 +91,16 @@ static bool _otaFailed = false;
 static String _otaMessage;
 static bool _pendingRestart = false;
 static bool _isApMode      = false;
+static volatile bool _historyPreloadActive = false;
+static TaskHandle_t _historyPreloadTask = nullptr;
+
+static bool requireAdminAuth() {
+    if (!RuntimeSettings::adminAuthEnabled()) return true;
+    if (server.authenticate(RuntimeSettings::adminUsername().c_str(),
+                            RuntimeSettings::adminPassword().c_str())) return true;
+    server.requestAuthentication();
+    return false;
+}
 
 bool apiPendingRestart()    { return _pendingRestart; }
 void setApiApMode(bool v)   { _isApMode = v; }
@@ -167,7 +179,7 @@ static void updateHistoryBucket(HistoryAccumulator &acc, HistoryRing<N> &ring,
 }
 
 static void updateHistory() {
-    if (!_sensor) return;
+    if (!_sensor || _historyPreloadActive) return;
     static unsigned long lastSampleMs = 0;
     unsigned long nowMs = millis();
     if (nowMs - lastSampleMs < 1000UL) return;
@@ -180,9 +192,42 @@ static void updateHistory() {
     updateHistoryBucket(_acc30, _hist30, _hist30Rev, 6UL * 60UL * 60UL, nowSec, *_sensor);
 }
 
-// Читает хвост CSV-лога и заполняет кольцевые буферы истории.
+// Читает CSV-лог в фоне и заполняет кольцевые буферы истории.
 // Объявлена в API.h — вызывается из main.cpp при буте.
-// Максимальное окно чтения — последние READ_WINDOW байт (≈ 30 дней).
+// Фоново читает CSV и заполняет буферы последними 24 часами, 7 и 30 днями.
+static bool csvRowUnix(const char *line, uint32_t &rowUnix) {
+    int dd, mm, yy, hh, mi, ss;
+    if (sscanf(line, "\"%d.%d.%d  %d:%d:%d\"", &dd, &mm, &yy, &hh, &mi, &ss) != 6 || yy < 2020 || mm < 1 || mm > 12 || dd < 1 || dd > 31 || hh > 23 || mi > 59 || ss > 59) return false;
+    int a = (14 - mm) / 12, y = yy + 4800 - a, m = mm + 12 * a - 3;
+    uint32_t jdn = dd + (153 * m + 2) / 5 + 365UL * y + y / 4 - y / 100 + y / 400 - 32045;
+    rowUnix = (jdn - 2440588UL) * 86400UL + hh * 3600UL + mi * 60UL + ss;
+    return true;
+}
+
+// Подбирает хвост файла, который уже содержит запись старше 30 дней.
+// Окно растёт только при необходимости, поэтому весь CSV не читается.
+static size_t historyTailStart(File &f, uint32_t cutoff) {
+    const size_t fileSize = f.size();
+    size_t window = fileSize < 512UL * 1024UL ? fileSize : 512UL * 1024UL;
+    char buf[140];
+    while (true) {
+        size_t start = fileSize - window;
+        f.seek(start);
+        f.readBytesUntil('\n', buf, sizeof(buf) - 1); // partial row or CSV header
+        while (f.available()) {
+            int len = f.readBytesUntil('\n', buf, sizeof(buf) - 1);
+            if (len < 24) continue;
+            buf[len] = '\0';
+            uint32_t rowUnix;
+            if (!csvRowUnix(buf, rowUnix)) continue;
+            if (rowUnix <= cutoff || start == 0) return start;
+            break; // first full row is newer than cutoff: expand tail
+        }
+        if (window >= fileSize) return 0;
+        size_t next = window * 2;
+        window = next > fileSize ? fileSize : next;
+    }
+}
 void preloadHistoryFromSD() {
     const char *path = "/readings.csv";
     if (!SD.exists(path)) return;
@@ -193,22 +238,25 @@ void preloadHistoryFromSD() {
     uint32_t rtcNow = getRTCUnixTime();
     if (rtcNow == 0) { f.close(); return; } // нет RTC — нет абсолютного времени
 
-    // Ограничение: читаем не более последних ~30 дней (≈ 3,5 МБ при 60 с интервале)
-    const size_t READ_WINDOW = 3500UL * 1024UL;
-    size_t fileSize = f.size();
-    if (fileSize > READ_WINDOW + 256) {
-        f.seek(fileSize - READ_WINDOW);
-        f.readStringUntil('\n'); // пропускаем неполную строку
-    } else {
-        f.readStringUntil('\n'); // пропускаем заголовок
-    }
+    // В фоне истории не должно остаться live-точек перед CSV: иначе временной ряд
+    // у 24h/30d начинается с сейчас и становится непоследовательным.
+    _hist24.clear(); _hist7.clear(); _hist30.clear();
+    _acc24 = {}; _acc7 = {}; _acc30 = {};
+    _hist24Rev++; _hist7Rev++; _hist30Rev++;
+
+    // Начинаем с малого хвоста и расширяем его лишь до границы 30 дней.
+    const uint32_t cutoff = rtcNow > 30UL * 24 * 3600 ? rtcNow - 30UL * 24 * 3600 : 0;
+    const size_t start = historyTailStart(f, cutoff);
+    f.seek(start);
+    char buf[140];
+    f.readBytesUntil('\n', buf, sizeof(buf) - 1); // partial row or CSV header
 
     // Следующий допустимый момент для каждого кольцевого буфера (time-based decimation)
     uint32_t next24 = 0, next7 = 0, next30 = 0;
-
     int loaded = 0;
-    char buf[140];
+    int linesRead = 0;
     while (f.available()) {
+        if ((++linesRead & 63) == 0) vTaskDelay(1); // keep watchdog/UI responsive
         int len = f.readBytesUntil('\n', buf, sizeof(buf) - 1);
         if (len < 24) continue;
         buf[len] = '\0';
@@ -261,6 +309,24 @@ void preloadHistoryFromSD() {
     f.close();
     Serial.printf("History preload: %d points from SD\n", loaded);
 }
+
+static void historyPreloadTaskFn(void*) {
+    preloadHistoryFromSD();
+    _historyPreloadActive = false;
+    _historyPreloadTask = nullptr;
+    vTaskDelete(nullptr);
+}
+
+void startHistoryPreloadTask() {
+    if (_historyPreloadActive || _historyPreloadTask || !_sdReady) return;
+    _historyPreloadActive = true;
+    if (xTaskCreatePinnedToCore(historyPreloadTaskFn, "history", 8192, nullptr, 1, &_historyPreloadTask, 0) != pdPASS) {
+        _historyPreloadActive = false;
+        _historyPreloadTask = nullptr;
+    }
+}
+
+bool historyPreloadActive() { return _historyPreloadActive; }
 
 // Streams the response through a 256-byte stack buffer — no heap allocation for
 // the JSON payload itself, avoiding fragmentation from ~1440 temporary Strings.
@@ -377,6 +443,7 @@ static void handleStatus() {
     doc["wind_unit"]            = RuntimeSettings::windMetric() ? "m/s" : "km/h";
     doc["log_path"]             = readingsLogPath();
     doc["logger_ready"]         = loggerReady();
+    doc["auth_enabled"]         = RuntimeSettings::adminAuthEnabled();
     doc["weather_log_path"]     = weatherLogPath();
     doc["weather_logger_ready"] = weatherLoggerReady();
 
@@ -391,6 +458,7 @@ static void handleStatus() {
     system["hist24_rev"]           = _hist24Rev;
     system["hist7_rev"]            = _hist7Rev;
     system["hist30_rev"]           = _hist30Rev;
+    system["history_loading"]      = historyPreloadActive();
     system["hist24_interval_min"]  = 5;
     system["hist7_interval_min"]   = 60;
     system["hist30_interval_min"]  = 360;
@@ -408,6 +476,8 @@ static void handleStatus() {
     system["bl_dusk_end"]          = RuntimeSettings::backlightDuskEnd();
     system["led_mode"]             = RuntimeSettings::ledMode();
     system["pc_enabled"]           = RuntimeSettings::pcEnabled();
+    system["pc_screen_off"]        = RuntimeSettings::screenOffWhenPcDisconnected();
+    system["pc_stale_sec"]         = RuntimeSettings::pcStaleTimeoutSec();
     system["ntp_enabled"]          = RuntimeSettings::ntpEnabled();
     system["ntp_sync_on_boot"]     = RuntimeSettings::ntpSyncOnBoot();
     system["ntp_sync_interval_h"]  = RuntimeSettings::ntpSyncIntervalH();
@@ -546,6 +616,7 @@ static void handleHistory() {
 }
 
 static void handleSettingsGet() {
+    if (!requireAdminAuth()) return;
     JsonDocument doc;
     doc["ok"]             = true;
     doc["wifi_ssid"]      = RuntimeSettings::wifiSsid();
@@ -564,6 +635,7 @@ static void handleSettingsGet() {
 }
 
 static void handleSettingsPost() {
+    if (!requireAdminAuth()) return;
     String body = server.arg("plain");
     JsonDocument doc;
     if (deserializeJson(doc, body) != DeserializationError::Ok) {
@@ -578,6 +650,20 @@ static void handleSettingsPost() {
     bool windChanged = false;
     bool backlightChanged = false;
     bool ledChanged = false;
+
+    if (doc["admin_disable"] | false) {
+        if (!RuntimeSettings::saveAdminCredentials("", "")) {
+            server.send(500, "application/json", "{\"ok\":false,\"error\":\"failed to disable admin credentials\"}");
+            return;
+        }
+    } else if (doc["admin_username"].is<const char*>() || doc["admin_password"].is<const char*>()) {
+        String user = doc["admin_username"] | RuntimeSettings::adminUsername();
+        String pass = doc["admin_password"] | RuntimeSettings::adminPassword();
+        if (!RuntimeSettings::saveAdminCredentials(user, pass)) {
+            server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid admin credentials\"}");
+            return;
+        }
+    }
 
     if (doc["wifi_ssid"].is<const char*>()) {
         String ssid = doc["wifi_ssid"].as<String>();
@@ -655,6 +741,12 @@ static void handleSettingsPost() {
     if (doc["pc_enabled"].is<bool>()) {
         RuntimeSettings::savePcEnabled(doc["pc_enabled"].as<bool>());
     }
+    if (doc["pc_screen_off"].is<bool>()) {
+        RuntimeSettings::saveScreenOffWhenPcDisconnected(doc["pc_screen_off"].as<bool>());
+    }
+    if (doc["pc_stale_sec"].is<int>()) {
+        RuntimeSettings::savePcStaleTimeoutSec((uint16_t)doc["pc_stale_sec"].as<int>());
+    }
 
     if (doc["bme_temp_offset"].is<float>() || doc["bme_hum_offset"].is<float>()) {
         float tOff = doc["bme_temp_offset"] | RuntimeSettings::bmeTempOffset();
@@ -725,6 +817,7 @@ static void handleSettingsPost() {
 }
 
 static void handleScan() {
+    if (!requireAdminAuth()) return;
     int n = WiFi.scanComplete();
     if (n == WIFI_SCAN_FAILED) {
         WiFi.scanNetworks(true, true);
@@ -754,6 +847,7 @@ static void handleScan() {
 }
 
 static void handleReboot() {
+    if (!requireAdminAuth()) return;
     server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
     delay(300);
     ESP.restart();
@@ -789,6 +883,7 @@ static bool removePathRecursive(const String &path) {
 }
 
 static void handleHistoryClear() {
+    if (!requireAdminAuth()) return;
     _hist24.clear(); _hist7.clear(); _hist30.clear();
     _acc24 = {}; _acc7 = {}; _acc30 = {};
     _hist24Rev++; _hist7Rev++; _hist30Rev++;
@@ -796,6 +891,7 @@ static void handleHistoryClear() {
 }
 
 static void handleSdClear() {
+    if (!requireAdminAuth()) return;
     if (!_sdReady) {
         server.send(503, "application/json", "{\"ok\":false,\"error\":\"sd not ready\"}");
         return;
@@ -827,6 +923,7 @@ static void handleSdClear() {
     root.close();
 
     initLogger(_sdReady);
+    initWeatherLogger(_sdReady);
 
     // Reset in-memory history so the charts don't show stale data after SD clear
     _hist24.clear(); _hist7.clear(); _hist30.clear();
@@ -844,6 +941,7 @@ static void otaFail(const char *message) {
 }
 
 static void handleOtaUpload() {
+    if (!requireAdminAuth()) return;
     HTTPUpload &upload = server.upload();
 
     if (upload.status == UPLOAD_FILE_START) {
@@ -870,6 +968,7 @@ static void handleOtaUpload() {
 }
 
 static void handleOtaDone() {
+    if (!requireAdminAuth()) return;
     if (_otaFailed) {
         String out = "{\"ok\":false,\"error\":\"" + jsonEscape(_otaMessage) + "\"}";
         server.send(500, "application/json", out);
@@ -939,6 +1038,7 @@ static void handlePCPost() {
 }
 
 static void handleTelegramGet() {
+    if (!requireAdminAuth()) return;
     JsonDocument doc;
     doc["ok"]          = true;
     doc["enabled"]     = RuntimeSettings::tgEnabled();
@@ -959,6 +1059,7 @@ static void handleTelegramGet() {
 }
 
 static void handleTelegramPost() {
+    if (!requireAdminAuth()) return;
     String body = server.arg("plain");
     JsonDocument doc;
     if (deserializeJson(doc, body) != DeserializationError::Ok) {
@@ -1004,6 +1105,7 @@ static void handleTelegramPost() {
 }
 
 static void handleTelegramTest() {
+    if (!requireAdminAuth()) return;
     if (RuntimeSettings::tgToken().isEmpty() || RuntimeSettings::tgChatId().isEmpty()) {
         server.send(400, "application/json", "{\"ok\":false,\"error\":\"token or chat_id not set\"}");
         return;
@@ -1013,6 +1115,7 @@ static void handleTelegramTest() {
 }
 
 static void handleMqttGet() {
+    if (!requireAdminAuth()) return;
     JsonDocument doc;
     doc["ok"]          = true;
     doc["enabled"]     = RuntimeSettings::mqttEnabled();
@@ -1026,6 +1129,7 @@ static void handleMqttGet() {
 }
 
 static void handleMqttPost() {
+    if (!requireAdminAuth()) return;
     String body = server.arg("plain");
     JsonDocument doc;
     if (deserializeJson(doc, body) != DeserializationError::Ok) {
@@ -1049,8 +1153,12 @@ static void handleMqttPost() {
 }
 
 static void handleFactoryReset() {
+    if (!requireAdminAuth()) return;
     Preferences prefs;
     prefs.begin("pchub", false);
+    prefs.clear();
+    prefs.end();
+    prefs.begin("bsec", false);
     prefs.clear();
     prefs.end();
     server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
@@ -1059,6 +1167,7 @@ static void handleFactoryReset() {
 }
 
 static void handleIpGet() {
+    if (!requireAdminAuth()) return;
     JsonDocument doc;
     doc["ok"]             = true;
     doc["static_enabled"] = RuntimeSettings::staticIpEnabled();
@@ -1071,6 +1180,7 @@ static void handleIpGet() {
 }
 
 static void handleIpPost() {
+    if (!requireAdminAuth()) return;
     String body = server.arg("plain");
     JsonDocument doc;
     if (deserializeJson(doc, body) != DeserializationError::Ok) {

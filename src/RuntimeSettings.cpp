@@ -18,6 +18,10 @@ static bool _backlightInverted = false;
 static bool _autoBacklight = false;
 static uint8_t _ledMode = 0;
 static bool _pcEnabled = true;
+static bool _screenOffWhenPcDisconnected = false;
+static uint16_t _pcStaleTimeoutSec = 30;
+static String _adminUsername;
+static String _adminPassword;
 static bool     _tgEnabled     = false;
 static String   _tgToken;
 static String   _tgChatId;
@@ -114,6 +118,10 @@ void reload() {
     _autoBacklight     = prefs.getBool("bl_auto", false);
     _ledMode = prefs.getUChar("led_mode", 0);
     _pcEnabled = prefs.getBool("pc_enabled", true);
+    _screenOffWhenPcDisconnected = prefs.getBool("pc_screen_off", false);
+    _pcStaleTimeoutSec = (uint16_t)constrain((int)prefs.getUInt("pc_stale_sec", 30), 5, 300);
+    _adminUsername = prefs.getString("admin_user", "");
+    _adminPassword = prefs.getString("admin_pass", "");
     _tgEnabled    = prefs.getBool("tg_en", false);
     _tgToken      = prefs.getString("tg_token", "");
     _tgChatId     = prefs.getString("tg_chat_id", "");
@@ -207,6 +215,19 @@ uint8_t ledMode() {
 
 bool pcEnabled() {
     return _pcEnabled;
+}
+
+bool screenOffWhenPcDisconnected() { return _screenOffWhenPcDisconnected; }
+uint16_t pcStaleTimeoutSec() { return _pcStaleTimeoutSec; }
+void savePcStaleTimeoutSec(uint16_t seconds) {
+    seconds = (uint16_t)constrain((int)seconds, 5, 300);
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putUInt("pc_stale_sec", seconds); prefs.end(); reload();
+}
+
+void saveScreenOffWhenPcDisconnected(bool enabled) {
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putBool("pc_screen_off", enabled); prefs.end(); reload();
 }
 
 void saveWifi(const String &ssid, const String &password) {
@@ -325,6 +346,25 @@ void savePcEnabled(bool enabled) {
     prefs.putBool("pc_enabled", enabled);
     prefs.end();
     reload();
+}
+
+bool adminAuthEnabled() { return !_adminUsername.isEmpty() && !_adminPassword.isEmpty(); }
+String adminUsername() { return _adminUsername; }
+String adminPassword() { return _adminPassword; }
+
+bool saveAdminCredentials(const String &username, const String &password) {
+    String user = username;
+    user.trim();
+    if (user.length() > 31 || password.length() > 96) return false;
+    if (user.isEmpty() != password.isEmpty()) return false;
+
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putString("admin_user", user);
+    prefs.putString("admin_pass", password);
+    prefs.end();
+    reload();
+    return true;
 }
 
 float bmeTempOffset() { return _bmeTempOffset; }

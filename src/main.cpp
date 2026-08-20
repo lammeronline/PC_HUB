@@ -35,6 +35,14 @@ static bool sdReady   = false;
 static uint64_t sdSizeMb = 0;
 static bool      _apMode = false;
 static DNSServer _dnsServer;
+static bool _screenSleeping = false;
+
+static void updatePcScreenSleep() {
+    bool sleep = RuntimeSettings::pcEnabled() && RuntimeSettings::screenOffWhenPcDisconnected() && !pcFresh(currentPC);
+    if (sleep == _screenSleeping) return;
+    _screenSleeping = sleep;
+    if (sleep) Backlight::apply(0); else Backlight::restore(currentData.timeStr);
+}
 
 static UiStatus currentUiStatus() {
     UiStatus status;
@@ -249,18 +257,10 @@ void setup() {
     initPCDisplay(&currentPC);
     initWeatherTask(&weatherData);
 
-    // ── Preload history from SD ───────────────────────────────────────────────
-    if (sdReady && currentData.rtc_ok) {
-        bootLabel(tft, LX, y, "SD history", BG, MUTED);
-        bootPending(tft, SX, y, BG, AMBER);
-        preloadHistoryFromSD();
-        bootStatus(tft, SX, y, true, BG);
-        y += ROW;
-    }
-
     logReading(currentData, weatherData);
     lastLogWrite     = millis();
     lastSensorUpdate = millis();
+    if (sdReady && currentData.rtc_ok) startHistoryPreloadTask();
 
     if (currentData.rtc_ok && currentData.bme_ok && sdSizeMb > 0) {
         setLED(0, 255, 0);
@@ -296,6 +296,7 @@ void loop() {
 
     handleAPI();
     handlePCSerial();
+    updatePcScreenSleep();
     MQTT::handle();
 
     // WiFi watchdog — reconnect if disconnected for over 60 s
@@ -326,7 +327,7 @@ void loop() {
     if (now - lastSensorUpdate >= SENSOR_INTERVAL_MS) {
         updateSensors(currentData);
         updateLED(currentData.temperature, currentData.humidity, currentData.iaq, currentData.bme_ok);
-        if (RuntimeSettings::autoBacklight() && currentData.rtc_ok)
+        if (!_screenSleeping && RuntimeSettings::autoBacklight() && currentData.rtc_ok)
             Backlight::autoUpdate(currentData.timeStr);
         drawUI(currentData, weatherData, currentUiStatus());
         lastSensorUpdate = now;

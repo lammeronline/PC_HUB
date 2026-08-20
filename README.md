@@ -14,7 +14,7 @@ An ESP32-based environmental monitoring hub with a 320×240 TFT display, web das
 - **PC hardware monitoring** — companion Windows agent sends CPU/GPU temperature, load, power, RAM usage, and laptop battery status over Wi-Fi or USB serial.
 - **TFT display** — 320×240 ST7789, four tabs: Sensors / Forecast / PC Monitor / System. Taskbar header shows dynamic Wi-Fi signal strength, SD card status, PC Agent status, and battery icon (laptops only).
 - **Web dashboard** — responsive dark-themed SPA; live sensor cards, interactive 24h/7d/30d charts, settings modal.
-- **Data logging** — CSV to SD card every minute; history preloaded into charts on reboot.
+- **Data logging** — CSV to SD card every minute; history is loaded from the SD card in the background after boot.
 - **Telegram bot** — `/status`, `/help`, `/reboot` commands; configurable threshold alerts with cooldown.
 - **MQTT** — publishes all sensor values to a broker on a configurable interval; subscribes to a command topic.
 - **OTA firmware update** — upload a new `.bin` directly from the web UI.
@@ -174,18 +174,19 @@ The single-page dashboard polls `/api/status` every 2.5 seconds and renders:
 - **Charts** — 24 h / 7 d / 30 d switchable history for temperature, humidity, pressure, and CO₂
 - **Footer** — live status of RTC, BME680, SD card, logger, PC Agent, and MQTT
 
-### Settings modal (8 tabs)
+### Settings modal (9 tabs)
 
 | Tab | Contents |
 |-----|----------|
 | Network | Wi-Fi scan & credentials, static IP / DHCP, AP mode IP |
 | NTP | NTP server, UTC offset, sync-on-boot, periodic sync interval |
-| Device | Device name, hostname, RGB LED mode; adaptive auto-brightness schedule (min/max %, dawn/dusk times), manual brightness slider, PWM invert; PC Agent toggle; BME680 offset calibration |
+| Device | Device name, hostname, RGB LED mode; adaptive auto-brightness schedule (min/max %, dawn/dusk times), manual brightness slider, PWM invert; PC Agent toggle; configurable PC offline timeout (5–300 s, default 30); BME680 offset calibration |
 | Telegram | Bot token, chat ID, per-metric alert thresholds, alert cooldown |
 | MQTT | Broker address, port, credentials, topic prefix, publish interval |
 | Data | Weather city, wind unit, chart history info, CSV/weather log download links |
 | Info | Live runtime key-value table, sensor status |
 | System | Firmware version, OTA upload, SD card clear, reboot, factory reset |
+| Access | Optional login/password protection for administrative settings and OTA |
 
 ---
 
@@ -279,6 +280,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
     "bl_dusk_start": 1200,
     "bl_dusk_end": 1320,
     "pc_enabled": true,
+    "pc_stale_sec": 30,
     "weather_city": "Moscow",
     "hist24_rev": 5,
     "hist7_rev": 2,
@@ -291,7 +293,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 
 `bl_dawn_start` / `bl_dawn_end` / `bl_dusk_start` / `bl_dusk_end` are minutes since midnight (e.g. 360 = 06:00, 1320 = 22:00).
 
-### `/api/settings` POST keys (backlight schedule)
+### `/api/settings` POST keys (display and PC Agent)
 
 | Key | Type | Description |
 |-----|------|-------------|
@@ -304,6 +306,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 | `bl_dawn_end` | int 0–1439 | Ramp-up end |
 | `bl_dusk_start` | int 0–1439 | Ramp-down start |
 | `bl_dusk_end` | int 0–1439 | Ramp-down end |
+| `pc_stale_sec` | int 5–300 | Seconds without a PC Agent update before PC data is considered offline; default 30 |
 
 ### History data format
 
@@ -323,10 +326,13 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 }
 ```
 
-Resolutions: `24h` = 5-minute buckets (up to 288 points), `7d` = 1-hour (168 points), `30d` = 6-hour (720 points). History is preloaded from SD card on every boot; loading time scales with log file size (~30 s for a full 30-day log).
+Resolutions: `24h` = 5-minute buckets (up to 288 points), `7d` = 1-hour (168 points), `30d` = 6-hour (720 points). History is loaded from the SD card by a background task after boot; the dashboard and API remain available while charts fill progressively.
 
 ---
 
+## Access protection
+
+Access protection is optional. In **Settings → Access**, set both an administrator login and password to protect administrative settings, OTA update, log clearing, reboot and factory reset with HTTP Basic Auth. When protection is enabled, pressing **Settings** opens a single PCHUB login window with both fields. Leaving both Access fields empty disables protection. Monitoring data and PC Agent metric delivery remain available without authentication.
 ## PC Agent (Windows)
 
 The `PCAgent/` directory contains a **.NET 10 Windows application** (WinForms, x64) that reads hardware metrics via [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) and sends them to the device.
@@ -399,7 +405,7 @@ Battery fields are only included when **Send battery status** is enabled and a b
 | `bac` | bool | AC power connected |
 | `bsv` | bool | Battery Saver mode active |
 
-PC data is considered stale and cleared from the display if no update arrives for **10 seconds**.
+In **Settings → Device → Features**, set **PC offline timeout (seconds)** to 5–300 seconds (default **30**). If no PC Agent update arrives within that interval, PC data is considered stale and cleared from the display. The same timeout is used by the optional **Screen off when PC disconnects** setting.
 
 ### Battery icon (display)
 

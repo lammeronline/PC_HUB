@@ -21,8 +21,9 @@ struct PCData {
     unsigned long lastMs    = 0;
 };
 
-static const unsigned long PC_STALE_MS = 10000UL;
+static const uint16_t PC_STALE_DEFAULT_SEC = 30;
+unsigned long pcStaleTimeoutMs();
 
 inline bool pcFresh(const PCData &d) {
-    return d.ok && (millis() - d.lastMs < PC_STALE_MS);
+    return d.ok && (millis() - d.lastMs < pcStaleTimeoutMs());
 }

@@ -1,7 +1,12 @@
 #include "PCAgent.h"
+#include "RuntimeSettings.h"
 #include <ArduinoJson.h>
 
 static PCData *_pc  = nullptr;
+
+unsigned long pcStaleTimeoutMs() {
+    return (unsigned long)RuntimeSettings::pcStaleTimeoutSec() * 1000UL;
+}
 static String  _buf;
 
 void initPCAgent(PCData *data) {

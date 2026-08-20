@@ -76,6 +76,14 @@ void autoUpdate(const char* timeStr) {
     if (next != _brightness) apply(next);
 }
 
+void restore(const char* timeStr) {
+    if (RuntimeSettings::autoBacklight() && timeStr && timeStr[12] >= '0' && timeStr[12] <= '9') {
+        int h = (timeStr[12] - '0') * 10 + (timeStr[13] - '0');
+        int m = (timeStr[15] - '0') * 10 + (timeStr[16] - '0');
+        apply(targetForMinutes(h * 60 + m));
+    } else apply(RuntimeSettings::backlightPercent());
+}
+
 uint8_t brightness() {
     return _brightness;
 }

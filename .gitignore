@@ -15,3 +15,7 @@ PCAgent/build/
 
 # C# Dev Kit language server cache (VS Code, auto-regenerated)
 *.lscache
+
+# Local planning and audit notes
+ROADMAP.md
+CODE_ANALYSIS.md

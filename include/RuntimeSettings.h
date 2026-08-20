@@ -33,6 +33,16 @@ namespace RuntimeSettings {
     void saveWeatherLogEnabled(bool enabled);
     uint8_t ledMode();
     bool pcEnabled();
+    bool screenOffWhenPcDisconnected();
+    uint16_t pcStaleTimeoutSec();
+    void savePcStaleTimeoutSec(uint16_t seconds);
+    void saveScreenOffWhenPcDisconnected(bool enabled);
+
+    // Optional HTTP Basic Auth for administrative API endpoints.
+    bool   adminAuthEnabled();
+    String adminUsername();
+    String adminPassword();
+    bool   saveAdminCredentials(const String &username, const String &password);
 
     bool     tgEnabled();
     String   tgToken();
