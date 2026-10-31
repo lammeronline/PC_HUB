@@ -98,11 +98,19 @@ void initSensors() {
 }
 
 
+void applyNtpConfig() {
+    String ntpServer = RuntimeSettings::ntpServer();
+    if (RuntimeSettings::ntpAutoDst()) {
+        configTzTime(RuntimeSettings::ntpTzRule().c_str(), ntpServer.c_str());
+    } else {
+        configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
+    }
+}
+
 bool syncRTCfromNTP() {
     if (WiFi.status() != WL_CONNECTED) return false;
 
-    String ntpServer = RuntimeSettings::ntpServer();
-    configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
+    applyNtpConfig();
 
     struct tm timeinfo;
     // First attempt — network may still be settling after fresh connect

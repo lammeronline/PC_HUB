@@ -34,6 +34,7 @@ static String activeWeatherCity;
 static bool sdReady   = false;
 static uint64_t sdSizeMb = 0;
 static bool      _apMode = false;
+static unsigned long _lastApWifiRetry = 0;
 static DNSServer _dnsServer;
 static bool _screenSleeping = false;
 
@@ -88,6 +89,31 @@ static bool connectWiFi() {
     }
     Serial.printf("WiFi: OK %s\n", WiFi.localIP().toString().c_str());
     return true;
+}
+
+// Пробует подключиться к сохранённой сети, не останавливая текущую точку доступа.
+// Используется из AP-fallback режима, чтобы само восстановиться после перезагрузки роутера.
+static bool tryReconnectFromAP() {
+    String ssid = RuntimeSettings::wifiSsid();
+    if (ssid.isEmpty()) return false;
+
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(ssid.c_str(), RuntimeSettings::wifiPassword().c_str());
+
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi: reconnected from AP fallback, restarting into normal mode");
+        return true;
+    }
+
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    return false;
 }
 
 // ── boot screen helpers ─────────────────────────────────────────────────────
@@ -205,6 +231,7 @@ void setup() {
         WiFi.softAPConfig(apIpAddr, apIpAddr, apSubnet);
         WiFi.softAP(apSsid.c_str());
         _apMode = true;
+        _lastApWifiRetry = millis();
         setApiApMode(true);
 
         _dnsServer.start(53, "*", apIpAddr);
@@ -287,6 +314,15 @@ void loop() {
     if (_apMode) {
         _dnsServer.processNextRequest();
         handleAPI();
+
+        uint16_t retryMin = RuntimeSettings::apRetryIntervalMin();
+        if (retryMin > 0 && millis() - _lastApWifiRetry >= (unsigned long)retryMin * 60000UL) {
+            _lastApWifiRetry = millis();
+            if (tryReconnectFromAP()) {
+                ESP.restart();
+            }
+        }
+
         delay(10);
         return;
     }

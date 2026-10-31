@@ -20,5 +20,6 @@ struct SensorData {
 // Объявляем функции, которые будем вызывать из main
 void initSensors();
 void updateSensors(SensorData &data);
+void applyNtpConfig(); // Применяет текущие настройки NTP (offset или TZ-правило с автопереходом DST)
 bool syncRTCfromNTP(); // Синхронизация RTC по NTP (WiFi уже должен быть подключён)
 uint32_t getRTCUnixTime(); // Unix-время от RTC; 0 если RTC не найден

@@ -21,11 +21,15 @@ namespace RuntimeSettings {
     bool    ntpEnabled();
     bool    ntpSyncOnBoot();
     uint8_t ntpSyncIntervalH();
+    bool    ntpAutoDst();
+    String  ntpTzRule();
 
     void saveNtp(const String &server, long offsetSec);
     void saveNtpEnabled(bool enabled);
     void saveNtpSyncOnBoot(bool enabled);
     void saveNtpSyncIntervalH(uint8_t hours);
+    void saveNtpAutoDst(bool enabled);
+    void saveNtpTzRule(const String &rule);
     void saveDeviceIdentity(const String &deviceName, const String &hostname);
     void saveWeatherCity(const String &city);
     void saveWindMetric(bool metric);
@@ -92,10 +96,12 @@ namespace RuntimeSettings {
     String staticSubnet();
     String staticDns();
     String apIp();
+    uint16_t apRetryIntervalMin();
 
     void saveIpSettings(bool staticEnabled, const String &ip, const String &gw,
                         const String &sn, const String &dns);
     void saveApIp(const String &ip);
+    void saveApRetryIntervalMin(uint16_t minutes);
 
     void saveMqttEnabled(bool enabled);
     void saveMqttSettings(const String &broker, uint16_t port,

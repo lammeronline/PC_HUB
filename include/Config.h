@@ -23,6 +23,8 @@
 #define WIFI_PASSWORD ""
 #define NTP_SERVER    "pool.ntp.org"
 #define NTP_OFFSET    10800
+// Default POSIX TZ rule used when automatic DST is enabled (Kyiv / EU rule: EET/EEST, last Sun Mar/Oct)
+#define NTP_TZ_RULE   "EET-2EEST,M3.5.0/3,M10.5.0/4"
 
 // Device name — used as mDNS hostname (http://DEVICE_NAME.local/)
 #define DEVICE_NAME "pchub"

@@ -20,7 +20,7 @@ An ESP32-based environmental monitoring hub with a 320×240 TFT display, web das
 - **OTA firmware update** — upload a new `.bin` directly from the web UI.
 - **RGB LED** — configurable mode: off / temperature-based / humidity-based / air quality colour.
 - **Adaptive auto-brightness** — PWM backlight follows a configurable time-of-day schedule with adjustable min/max brightness (%), dawn start/end, and dusk start/end times; adaptive step rate (fast convergence when far from target, smooth finish when close).
-- **AP mode with captive portal** — boots into its own Wi-Fi hotspot on first run; works with Android, iOS, Windows, and Chrome captive portal detection.
+- **AP mode with captive portal** — boots into its own Wi-Fi hotspot on first run, or whenever it can't reach the saved Wi-Fi network; works with Android, iOS, Windows, and Chrome captive portal detection. While in AP mode it periodically retries the saved network in the background (configurable interval, default every 5 min) and automatically switches back to normal mode — useful after a power outage when the router takes longer to come back online than the ESP32.
 - **Static IP & configurable AP IP** — optional fixed IP address; AP mode IP configurable.
 - **mDNS** — device reachable at `http://pchub.local/`.
 - **Factory reset** — single button in the web UI erases all NVS settings.
@@ -179,7 +179,7 @@ The single-page dashboard polls `/api/status` every 2.5 seconds and renders:
 | Tab | Contents |
 |-----|----------|
 | Network | Wi-Fi scan & credentials, static IP / DHCP, AP mode IP |
-| NTP | NTP server, UTC offset, sync-on-boot, periodic sync interval |
+| NTP | NTP server, UTC offset, optional automatic DST (POSIX TZ rule), sync-on-boot, periodic sync interval, manual "Sync now" |
 | Device | Device name, hostname, RGB LED mode; adaptive auto-brightness schedule (min/max %, dawn/dusk times), manual brightness slider, PWM invert; PC Agent toggle; configurable PC offline timeout (5–300 s, default 30); BME680 offset calibration |
 | Telegram | Bot token, chat ID, per-metric alert thresholds, alert cooldown |
 | MQTT | Broker address, port, credentials, topic prefix, publish interval |
@@ -216,6 +216,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 | POST | `/api/sd/clear` | Erase all files from SD card |
 | POST | `/api/history/clear` | Clear in-memory history buffers |
 | POST | `/api/reboot` | Reboot the device |
+| POST | `/api/ntp/sync` | Trigger an immediate NTP resync and RTC update (no reboot required) |
 | POST | `/api/factory-reset` | Erase all NVS settings and reboot |
 
 ### `/api/status` response structure
@@ -270,6 +271,8 @@ Base URL: `http://pchub.local` (or device IP, port 80).
     "wifi_ssid": "MyNetwork",
     "ntp_server": "pool.ntp.org",
     "ntp_offset_sec": 10800,
+    "ntp_auto_dst": false,
+    "ntp_tz_rule": "EET-2EEST,M3.5.0/3,M10.5.0/4",
     "backlight_pct": 80,
     "auto_backlight": true,
     "backlight_inverted": false,
@@ -307,6 +310,8 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 | `bl_dusk_start` | int 0–1439 | Ramp-down start |
 | `bl_dusk_end` | int 0–1439 | Ramp-down end |
 | `pc_stale_sec` | int 5–300 | Seconds without a PC Agent update before PC data is considered offline; default 30 |
+| `ntp_auto_dst` | bool | When true, ignore `ntp_offset_sec` and apply `ntp_tz_rule` instead, so the UTC offset switches automatically for daylight saving |
+| `ntp_tz_rule` | string | POSIX TZ rule (e.g. `EET-2EEST,M3.5.0/3,M10.5.0/4` for Kyiv/EU); only used when `ntp_auto_dst` is true |
 
 ### History data format
 

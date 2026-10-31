@@ -3,6 +3,7 @@
 #include "Version.h"
 #include "Logger.h"
 #include "RuntimeSettings.h"
+#include "Sensors.h"
 #include "Backlight.h"
 #include "Telegram.h"
 #include "MQTT.h"
@@ -481,6 +482,8 @@ static void handleStatus() {
     system["ntp_enabled"]          = RuntimeSettings::ntpEnabled();
     system["ntp_sync_on_boot"]     = RuntimeSettings::ntpSyncOnBoot();
     system["ntp_sync_interval_h"]  = RuntimeSettings::ntpSyncIntervalH();
+    system["ntp_auto_dst"]         = RuntimeSettings::ntpAutoDst();
+    system["ntp_tz_rule"]          = RuntimeSettings::ntpTzRule();
     system["sd_total_mb"]          = _sdTotalMb;
     system["sd_used_mb"]           = _sdUsedMb;
     system["weather_log_enabled"]  = RuntimeSettings::weatherLogEnabled();
@@ -553,6 +556,7 @@ static void handleStatus() {
     ipCfg["static_sn"]      = RuntimeSettings::staticSubnet();
     ipCfg["static_dns"]     = RuntimeSettings::staticDns();
     ipCfg["ap_ip"]          = RuntimeSettings::apIp();
+    ipCfg["ap_retry_min"]   = RuntimeSettings::apRetryIntervalMin();
 
     JsonObject pc = doc["pc"].to<JsonObject>();
     if (_pcData) {
@@ -626,6 +630,8 @@ static void handleSettingsGet() {
     doc["wind_unit"]      = RuntimeSettings::windMetric() ? "m/s" : "km/h";
     doc["ntp_server"]     = RuntimeSettings::ntpServer();
     doc["ntp_offset_sec"] = RuntimeSettings::ntpOffsetSec();
+    doc["ntp_auto_dst"]   = RuntimeSettings::ntpAutoDst();
+    doc["ntp_tz_rule"]    = RuntimeSettings::ntpTzRule();
     doc["backlight_pct"]      = Backlight::brightness();
     doc["backlight_inverted"] = RuntimeSettings::backlightInverted();
     doc["led_mode"]           = RuntimeSettings::ledMode();
@@ -680,10 +686,18 @@ static void handleSettingsPost() {
         long offsetSec = doc["ntp_offset_sec"] | RuntimeSettings::ntpOffsetSec();
         serverName.trim();
         RuntimeSettings::saveNtp(serverName, offsetSec);
-        String ntpServer = RuntimeSettings::ntpServer();
-        configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
         ntpChanged = true;
     }
+
+    if (doc["ntp_auto_dst"].is<bool>()) {
+        RuntimeSettings::saveNtpAutoDst(doc["ntp_auto_dst"].as<bool>());
+        ntpChanged = true;
+    }
+    if (doc["ntp_tz_rule"].is<const char*>()) {
+        RuntimeSettings::saveNtpTzRule(doc["ntp_tz_rule"].as<String>());
+        ntpChanged = true;
+    }
+    if (ntpChanged) applyNtpConfig();
 
     if (doc["device"].is<const char*>() || doc["hostname"].is<const char*>()) {
         String deviceName = doc["device"] | RuntimeSettings::deviceName();
@@ -851,6 +865,20 @@ static void handleReboot() {
     server.send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
     delay(300);
     ESP.restart();
+}
+
+static void handleNtpSync() {
+    if (!requireAdminAuth()) return;
+    if (WiFi.status() != WL_CONNECTED) {
+        server.send(200, "application/json", "{\"ok\":false,\"error\":\"wifi not connected\"}");
+        return;
+    }
+    bool ok = syncRTCfromNTP();
+    JsonDocument doc;
+    doc["ok"] = ok;
+    doc["unix_time"] = getRTCUnixTime();
+    if (!ok) doc["error"] = "ntp request failed";
+    sendJson(doc);
 }
 
 static bool removePathRecursive(const String &path) {
@@ -1176,6 +1204,7 @@ static void handleIpGet() {
     doc["static_sn"]      = RuntimeSettings::staticSubnet();
     doc["static_dns"]     = RuntimeSettings::staticDns();
     doc["ap_ip"]          = RuntimeSettings::apIp();
+    doc["ap_retry_min"]   = RuntimeSettings::apRetryIntervalMin();
     sendJson(doc);
 }
 
@@ -1199,6 +1228,10 @@ static void handleIpPost() {
 
     if (doc["ap_ip"].is<const char*>()) {
         RuntimeSettings::saveApIp(doc["ap_ip"].as<String>());
+    }
+
+    if (doc["ap_retry_min"].is<int>()) {
+        RuntimeSettings::saveApRetryIntervalMin((uint16_t)doc["ap_retry_min"].as<int>());
     }
 
     server.send(200, "application/json", "{\"ok\":true}");
@@ -1267,6 +1300,7 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/sd/clear",      HTTP_POST, handleSdClear);
     server.on("/api/history/clear", HTTP_POST, handleHistoryClear);
     server.on("/api/reboot",        HTTP_POST, handleReboot);
+    server.on("/api/ntp/sync",      HTTP_POST, handleNtpSync);
     server.on("/api/pc",            HTTP_POST, handlePCPost);
     server.on("/api/telegram",      HTTP_GET,  handleTelegramGet);
     server.on("/api/telegram",      HTTP_POST, handleTelegramPost);

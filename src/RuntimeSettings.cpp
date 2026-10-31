@@ -39,12 +39,15 @@ static uint16_t _tgCooldownMin = 10;
 static bool    _ntpEnabled       = true;
 static bool    _ntpSyncOnBoot    = true;
 static uint8_t _ntpSyncIntervalH = 24;
+static bool    _ntpAutoDst       = false;
+static String  _ntpTzRule        = NTP_TZ_RULE;
 static bool   _staticIpEnabled = false;
 static String _staticIp        = "";
 static String _staticGateway   = "";
 static String _staticSubnet    = "255.255.255.0";
 static String _staticDns       = "8.8.8.8";
 static String _apIp            = "192.168.4.1";
+static uint16_t _apRetryIntervalMin = 5;
 static bool     _mqttEnabled    = false;
 static String   _mqttBroker;
 static uint16_t _mqttPort       = 1883;
@@ -113,6 +116,8 @@ void reload() {
     _ntpEnabled        = prefs.getBool("ntp_en",    true);
     _ntpSyncOnBoot     = prefs.getBool("ntp_boot",  true);
     _ntpSyncIntervalH  = (uint8_t)prefs.getUInt("ntp_intv_h", 24);
+    _ntpAutoDst        = prefs.getBool("ntp_dst_en", false);
+    _ntpTzRule         = prefs.getString("ntp_tz_rule", NTP_TZ_RULE);
     _backlightPercent = clampPercent(prefs.getUInt("bl_pct", 100));
     _backlightInverted = prefs.getBool("bl_inv", false);
     _autoBacklight     = prefs.getBool("bl_auto", false);
@@ -142,6 +147,7 @@ void reload() {
     _staticSubnet    = prefs.getString("static_sn", "255.255.255.0");
     _staticDns       = prefs.getString("static_dns", "8.8.8.8");
     _apIp            = prefs.getString("ap_ip", "192.168.4.1");
+    _apRetryIntervalMin = (uint16_t)constrain((int)prefs.getUInt("ap_retry_min", 5), 0, 60);
     _mqttEnabled     = prefs.getBool("mqtt_en", false);
     _mqttBroker      = prefs.getString("mqtt_broker", "");
     _mqttPort        = (uint16_t)prefs.getUInt("mqtt_port", 1883);
@@ -242,6 +248,8 @@ void saveWifi(const String &ssid, const String &password) {
 bool    ntpEnabled()       { return _ntpEnabled; }
 bool    ntpSyncOnBoot()    { return _ntpSyncOnBoot; }
 uint8_t ntpSyncIntervalH() { return _ntpSyncIntervalH; }
+bool    ntpAutoDst()       { return _ntpAutoDst; }
+String  ntpTzRule()        { return _ntpTzRule.isEmpty() ? String(NTP_TZ_RULE) : _ntpTzRule; }
 
 void saveNtpEnabled(bool enabled) {
     Preferences prefs; prefs.begin("pchub", false);
@@ -254,6 +262,23 @@ void saveNtpSyncOnBoot(bool enabled) {
 void saveNtpSyncIntervalH(uint8_t hours) {
     Preferences prefs; prefs.begin("pchub", false);
     prefs.putUInt("ntp_intv_h", hours); prefs.end(); reload();
+}
+void saveNtpAutoDst(bool enabled) {
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putBool("ntp_dst_en", enabled); prefs.end(); reload();
+}
+void saveNtpTzRule(const String &rule) {
+    String clean = rule;
+    clean.trim();
+    if (clean.length() == 0 || clean.length() > 63) return;
+    for (size_t i = 0; i < clean.length(); i++) {
+        char c = clean[i];
+        bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                  c == '+' || c == '-' || c == ',' || c == '/' || c == '.';
+        if (!ok) return;
+    }
+    Preferences prefs; prefs.begin("pchub", false);
+    prefs.putString("ntp_tz_rule", clean); prefs.end(); reload();
 }
 
 void saveNtp(const String &server, long offsetSec) {
@@ -427,6 +452,7 @@ String staticGateway()   { return _staticGateway; }
 String staticSubnet()    { return _staticSubnet.isEmpty() ? String("255.255.255.0") : _staticSubnet; }
 String staticDns()       { return _staticDns.isEmpty()   ? String("8.8.8.8")       : _staticDns; }
 String apIp()            { return _apIp.isEmpty()        ? String("192.168.4.1")   : _apIp; }
+uint16_t apRetryIntervalMin() { return _apRetryIntervalMin; }
 
 void saveIpSettings(bool staticEnabled, const String &ip, const String &gw,
                     const String &sn, const String &dns) {
@@ -447,6 +473,15 @@ void saveApIp(const String &ip) {
     Preferences prefs;
     prefs.begin("pchub", false);
     prefs.putString("ap_ip", clean);
+    prefs.end();
+    reload();
+}
+
+void saveApRetryIntervalMin(uint16_t minutes) {
+    minutes = (uint16_t)constrain((int)minutes, 0, 60);
+    Preferences prefs;
+    prefs.begin("pchub", false);
+    prefs.putUInt("ap_retry_min", minutes);
     prefs.end();
     reload();
 }
