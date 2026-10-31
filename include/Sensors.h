@@ -23,3 +23,4 @@ void updateSensors(SensorData &data);
 void applyNtpConfig(); // Применяет текущие настройки NTP (offset или TZ-правило с автопереходом DST)
 bool syncRTCfromNTP(); // Синхронизация RTC по NTP (WiFi уже должен быть подключён)
 uint32_t getRTCUnixTime(); // Unix-время от RTC; 0 если RTC не найден
+bool setRTCManual(int year, int month, int day, int hour, int minute, int second); // Ручная установка RTC (локальное время), на случай если NTP недоступен (например, провайдер/роутер блокирует UDP:123)

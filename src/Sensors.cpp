@@ -108,17 +108,41 @@ void applyNtpConfig() {
 }
 
 bool syncRTCfromNTP() {
-    if (WiFi.status() != WL_CONNECTED) return false;
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("NTP: skipped, WiFi not connected");
+        return false;
+    }
+
+    String ntpServer = RuntimeSettings::ntpServer();
+    IPAddress resolved;
+    bool dnsOk = WiFi.hostByName(ntpServer.c_str(), resolved);
+    Serial.printf("NTP: server=%s dns=%s ip=%s local=%s gw=%s dns1=%s\n",
+        ntpServer.c_str(),
+        dnsOk ? "OK" : "FAIL",
+        dnsOk ? resolved.toString().c_str() : "-",
+        WiFi.localIP().toString().c_str(),
+        WiFi.gatewayIP().toString().c_str(),
+        WiFi.dnsIP(0).toString().c_str());
 
     applyNtpConfig();
 
     struct tm timeinfo;
-    // First attempt — network may still be settling after fresh connect
+    // Each retry re-resolves/restarts SNTP (applyNtpConfig), not just polls longer —
+    // the configured pool hostname round-robins to a different server on each DNS
+    // lookup, and a single unresponsive pool member can't be waited out by polling
+    // the same session longer; a fresh attempt gives a fresh server a chance.
     if (!getLocalTime(&timeinfo, 4000)) {
-        delay(1500);
-        if (!getLocalTime(&timeinfo, 4000)) {
-            Serial.println("NTP: time FAILED");
-            return false;
+        Serial.println("NTP: attempt 1 FAILED, retrying with fresh DNS");
+        delay(1000);
+        applyNtpConfig();
+        if (!getLocalTime(&timeinfo, 5000)) {
+            Serial.println("NTP: attempt 2 FAILED, retrying with fresh DNS");
+            delay(1000);
+            applyNtpConfig();
+            if (!getLocalTime(&timeinfo, 5000)) {
+                Serial.println("NTP: attempt 3 FAILED, giving up");
+                return false;
+            }
         }
     }
 
@@ -140,6 +164,16 @@ bool syncRTCfromNTP() {
 uint32_t getRTCUnixTime() {
     if (!_rtc_found) return 0;
     return rtc.now().unixtime();
+}
+
+bool setRTCManual(int year, int month, int day, int hour, int minute, int second) {
+    if (!_rtc_found) return false;
+    if (year < 2000 || year > 2099) return false;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return false;
+    rtc.adjust(DateTime((uint16_t)year, (uint8_t)month, (uint8_t)day,
+                         (uint8_t)hour, (uint8_t)minute, (uint8_t)second));
+    return true;
 }
 
 void updateSensors(SensorData &data) {

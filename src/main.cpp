@@ -29,6 +29,7 @@ static unsigned long lastWeatherUpdate  = 0;
 static unsigned long lastLogWrite       = 0;
 static unsigned long lastSensorUpdate   = 0;
 static unsigned long lastNtpSync        = 0;
+static bool          lastNtpOk          = false;
 static unsigned long wifiDownSince      = 0;
 static String activeWeatherCity;
 static bool sdReady   = false;
@@ -61,6 +62,12 @@ static bool connectWiFi() {
     WiFi.setHostname(RuntimeSettings::hostname().c_str());
     WiFi.mode(WIFI_STA);
 
+    // WiFi.setSleep(false) здесь не используется: эмпирически подтверждено, что
+    // отключение power-save на этой плате ломает приём UDP-ответов (NTP), хотя
+    // TCP/HTTPS продолжает работать нормально. Возможная задержка отрисовки часов
+    // из-за блокирующего чтения запроса в WebServer — отдельная, менее критичная
+    // проблема; чинить её нужно другим способом, не через setSleep.
+
     if (RuntimeSettings::staticIpEnabled()) {
         IPAddress ip, gw, sn, dns;
         if (ip.fromString(RuntimeSettings::staticIp()) &&
@@ -87,6 +94,7 @@ static bool connectWiFi() {
         Serial.println("WiFi: FAILED");
         return false;
     }
+
     Serial.printf("WiFi: OK %s\n", WiFi.localIP().toString().c_str());
     return true;
 }
@@ -253,11 +261,17 @@ void setup() {
     bootPending(tft, SX, y, BG, AMBER);
     bool ntp_ok = false;
     if (RuntimeSettings::ntpEnabled() && RuntimeSettings::ntpSyncOnBoot()) {
+        // Сразу после WL_CONNECTED сеть ещё не устоялась (эмпирически — до ~30-40с),
+        // поэтому попытка при загрузке нередко не удаётся. Это не фатально: если она
+        // провалилась, короткий интервал повтора в loop() (см. lastNtpOk) доберёт
+        // синхронизацию в течение минуты, не дожидаясь полного периода (часы).
+        delay(3000);
         ntp_ok = syncRTCfromNTP();
     }
     bootStatus(tft, SX, y, ntp_ok || !RuntimeSettings::ntpEnabled(), BG,
                !RuntimeSettings::ntpEnabled() ? "DISABLED" : (ntp_ok ? "OK" : "FAIL"));
     lastNtpSync = millis();
+    lastNtpOk   = ntp_ok;
     y += ROW;
 
     bootLabel(tft, LX, y, "Geocoding", BG, MUTED);
@@ -349,9 +363,14 @@ void loop() {
 
     uint8_t ntpIntervalH = RuntimeSettings::ntpSyncIntervalH();
     if (ntpIntervalH > 0 && RuntimeSettings::ntpEnabled()) {
-        unsigned long ntpIntervalMs = (unsigned long)ntpIntervalH * 3600000UL;
+        // Если предыдущая попытка не удалась — не ждать весь период (часы),
+        // а повторить скоро: сеть могла быть ещё не готова (видим на практике,
+        // что сразу после connect UDP NTP не проходит ~30-40с, затем работает).
+        unsigned long ntpIntervalMs = lastNtpOk
+            ? (unsigned long)ntpIntervalH * 3600000UL
+            : 60000UL;
         if (now - lastNtpSync >= ntpIntervalMs) {
-            syncRTCfromNTP();
+            lastNtpOk = syncRTCfromNTP();
             lastNtpSync = now;
         }
     }

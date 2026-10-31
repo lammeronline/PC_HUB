@@ -867,6 +867,24 @@ static void handleReboot() {
     ESP.restart();
 }
 
+static void handleTimeSet() {
+    if (!requireAdminAuth()) return;
+    String body = server.arg("plain");
+    JsonDocument doc;
+    if (deserializeJson(doc, body) != DeserializationError::Ok) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"bad json\"}");
+        return;
+    }
+    if (!doc["y"].is<int>() || !doc["mo"].is<int>() || !doc["d"].is<int>() ||
+        !doc["h"].is<int>() || !doc["mi"].is<int>() || !doc["s"].is<int>()) {
+        server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing fields\"}");
+        return;
+    }
+    bool ok = setRTCManual(doc["y"].as<int>(), doc["mo"].as<int>(), doc["d"].as<int>(),
+                           doc["h"].as<int>(), doc["mi"].as<int>(), doc["s"].as<int>());
+    server.send(200, "application/json", ok ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"invalid value or no RTC\"}");
+}
+
 static void handleNtpSync() {
     if (!requireAdminAuth()) return;
     if (WiFi.status() != WL_CONNECTED) {
@@ -1301,6 +1319,7 @@ void initAPI(const SensorData *sensor, const WeatherData *weather,
     server.on("/api/history/clear", HTTP_POST, handleHistoryClear);
     server.on("/api/reboot",        HTTP_POST, handleReboot);
     server.on("/api/ntp/sync",      HTTP_POST, handleNtpSync);
+    server.on("/api/time/set",      HTTP_POST, handleTimeSet);
     server.on("/api/pc",            HTTP_POST, handlePCPost);
     server.on("/api/telegram",      HTTP_GET,  handleTelegramGet);
     server.on("/api/telegram",      HTTP_POST, handleTelegramPost);
