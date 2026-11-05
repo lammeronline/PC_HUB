@@ -34,33 +34,35 @@ public class PcMetrics
     /// Format: {"type":"pc","ct":...,"cl":...,"cp":...,"gt":...,"gl":...,"gvr":...,"gvt":...,"ru":...,"rt":...}
     /// </summary>
     // NaN/Infinity → 0 so the JSON stays valid when a sensor read fails
-    private static string F(float v) => float.IsFinite(v) ? v.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) : "0.0";
+    private static float Finite(float v) => float.IsFinite(v) ? v : 0f;
 
     public string ToJson()
     {
-        static string Esc(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        var sb = new StringBuilder();
-        sb.Append("{");
-        sb.Append("\"type\":\"pc\",");
-        sb.Append($"\"cn\":\"{Esc(CpuName[..Math.Min(CpuName.Length, 31)])}\",");
-        sb.Append($"\"gn\":\"{Esc(GpuName[..Math.Min(GpuName.Length, 31)])}\",");
-        sb.Append($"\"ct\":{F(CpuTemp)},");
-        sb.Append($"\"cl\":{F(CpuLoad)},");
-        sb.Append($"\"cp\":{F(CpuPower)},");
-        sb.Append($"\"gt\":{F(GpuTemp)},");
-        sb.Append($"\"gl\":{F(GpuLoad)},");
-        sb.Append($"\"gvr\":{GpuVramUsedMb},");
-        sb.Append($"\"gvt\":{GpuVramTotalMb},");
-        sb.Append($"\"ru\":{RamUsedMb},");
-        sb.Append($"\"rt\":{RamTotalMb}");
-        if (HasBattery)
+        using var stream = new System.IO.MemoryStream();
+        using (var w = new Utf8JsonWriter(stream))
         {
-            sb.Append($",\"bat\":{(int)Math.Round(BatteryPercent)}");
-            sb.Append($",\"bch\":{(IsCharging ? "true" : "false")}");
-            sb.Append($",\"bac\":{(IsOnAc ? "true" : "false")}");
-            sb.Append($",\"bsv\":{(IsBatterySaver ? "true" : "false")}");
+            w.WriteStartObject();
+            w.WriteString("type", "pc");
+            w.WriteString("cn", CpuName[..Math.Min(CpuName.Length, 31)]);
+            w.WriteString("gn", GpuName[..Math.Min(GpuName.Length, 31)]);
+            w.WriteNumber("ct", MathF.Round(Finite(CpuTemp), 1));
+            w.WriteNumber("cl", MathF.Round(Finite(CpuLoad), 1));
+            w.WriteNumber("cp", MathF.Round(Finite(CpuPower), 1));
+            w.WriteNumber("gt", MathF.Round(Finite(GpuTemp), 1));
+            w.WriteNumber("gl", MathF.Round(Finite(GpuLoad), 1));
+            w.WriteNumber("gvr", GpuVramUsedMb);
+            w.WriteNumber("gvt", GpuVramTotalMb);
+            w.WriteNumber("ru", RamUsedMb);
+            w.WriteNumber("rt", RamTotalMb);
+            if (HasBattery)
+            {
+                w.WriteNumber("bat", (int)Math.Round(BatteryPercent));
+                w.WriteBoolean("bch", IsCharging);
+                w.WriteBoolean("bac", IsOnAc);
+                w.WriteBoolean("bsv", IsBatterySaver);
+            }
+            w.WriteEndObject();
         }
-        sb.Append("}");
-        return sb.ToString();
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 }

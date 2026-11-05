@@ -47,26 +47,41 @@ public class HardwareMonitor : IDisposable
             Timestamp = DateTime.UtcNow
         };
 
+        // On hybrid laptops (iGPU + dGPU) prefer a discrete GPU over Intel's integrated one
+        // regardless of enumeration order, instead of latching onto whichever appears first.
+        IHardware? bestGpu = null;
         foreach (var hardware in _computer.Hardware)
         {
-            switch (hardware.HardwareType)
+            try
             {
-                case HardwareType.Cpu:
-                    ReadCpu(hardware, metrics);
-                    break;
+                switch (hardware.HardwareType)
+                {
+                    case HardwareType.Cpu:
+                        ReadCpu(hardware, metrics);
+                        break;
 
-                case HardwareType.GpuNvidia:
-                case HardwareType.GpuAmd:
-                case HardwareType.GpuIntel:
-                    // Only read the first GPU found
-                    if (string.IsNullOrEmpty(metrics.GpuName))
-                        ReadGpu(hardware, metrics);
-                    break;
+                    case HardwareType.GpuNvidia:
+                    case HardwareType.GpuAmd:
+                    case HardwareType.GpuIntel:
+                        bool isDiscrete = hardware.HardwareType != HardwareType.GpuIntel;
+                        if (bestGpu == null || (isDiscrete && bestGpu.HardwareType == HardwareType.GpuIntel))
+                            bestGpu = hardware;
+                        break;
 
-                case HardwareType.Memory:
-                    ReadMemory(hardware, metrics);
-                    break;
+                    case HardwareType.Memory:
+                        ReadMemory(hardware, metrics);
+                        break;
+                }
             }
+            catch
+            {
+                // A single misbehaving sensor/driver call (vendor GPU library, WMI, etc.)
+                // shouldn't take the whole metrics read down with it.
+            }
+        }
+        if (bestGpu != null)
+        {
+            try { ReadGpu(bestGpu, metrics); } catch { }
         }
 
         if (ReadBattery)
@@ -287,7 +302,7 @@ public class HardwareMonitor : IDisposable
 
         public void VisitHardware(IHardware hardware)
         {
-            hardware.Update();
+            try { hardware.Update(); } catch { /* isolate one bad device from the rest */ }
             foreach (var subHardware in hardware.SubHardware)
                 subHardware.Accept(this);
         }

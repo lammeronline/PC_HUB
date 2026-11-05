@@ -59,11 +59,6 @@ public class PcHubClient : IDisposable
         }
     }
 
-    public void Reinitialize()
-    {
-        InitializeTransport();
-    }
-
     public async Task<bool> SendAsync(PcMetrics metrics)
     {
         if (_disposed) return false;
@@ -134,6 +129,12 @@ public class PcHubClient : IDisposable
             IsConnected = false;
             IsPaused = false;
             StatusMessage = $"WiFi error: {ex.Message}";
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            // Settings were saved (and the transport rebuilt) while this send was in flight.
+            // Not a real connection failure — the next tick will use the fresh client.
             return false;
         }
         catch (Exception ex)

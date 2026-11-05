@@ -6,7 +6,7 @@ echo.
 
 dotnet --version > nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] .NET SDK not found. Install .NET 8 from https://dotnet.microsoft.com/download
+    echo [ERROR] .NET SDK not found. Install .NET 10 from https://dotnet.microsoft.com/download
     pause
     exit /b 1
 )
@@ -16,7 +16,7 @@ taskkill /f /im PCAgent.exe > nul 2>&1
 echo       OK
 
 echo [2/3] Building PCAgent.exe...
-dotnet publish PCAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o build --verbosity quiet
+dotnet publish PCAgent.csproj -c Release -o build --verbosity quiet
 if errorlevel 1 (
     echo [ERROR] Build failed.
     pause

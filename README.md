@@ -389,6 +389,8 @@ cd PCAgent
 dotnet publish -c Release -o build
 ```
 
+Produces a single self-contained `PCAgent.exe` in `build/` (configured in `PCAgent.csproj`) — the target machine being monitored doesn't need the .NET runtime installed.
+
 Or open `PCAgent/PCAgent.sln` in Visual Studio 2022+.
 
 ### Configuration

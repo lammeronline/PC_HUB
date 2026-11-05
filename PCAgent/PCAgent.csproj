@@ -16,16 +16,20 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- This agent is meant to be copied onto whatever PC it monitors, which usually
+         doesn't have the .NET 10 Desktop Runtime installed — self-contained + single
+         file makes `dotnet publish -c Release -o build` produce a standalone PCAgent.exe
+         that just runs, instead of a framework-dependent build that fails on a clean
+         machine. Keeps README/CI/build.bat producing the same thing from the same command. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.3" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="pchub.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

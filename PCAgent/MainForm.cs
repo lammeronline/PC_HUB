@@ -118,8 +118,16 @@ public class MainForm : Form
 
     void LoadAppIcon()
     {
-        var p = Path.Combine(AppContext.BaseDirectory, "pchub.ico");
-        if (File.Exists(p)) { _appIcon = new Icon(p); Icon = _appIcon; }
+        // Extract from the running exe's own resources (embedded via <ApplicationIcon>)
+        // instead of reading a loose pchub.ico next to it — a self-contained single-file
+        // publish doesn't place content files alongside the exe, so the old path-based
+        // load silently found nothing once the app stopped being framework-dependent.
+        try
+        {
+            _appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if (_appIcon != null) Icon = _appIcon;
+        }
+        catch { /* window icon is cosmetic — fall back to the WinForms default */ }
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -717,6 +725,13 @@ public class MainForm : Form
                   <Triggers>
                     <LogonTrigger>
                       <Enabled>true</Enabled>
+                      <!-- If the process still exits unexpectedly (e.g. a native crash the
+                           handlers in Program.cs can't catch), restart it a few times
+                           instead of leaving the tray icon gone until next logon. -->
+                      <RestartOnFailure>
+                        <Interval>PT1M</Interval>
+                        <Count>3</Count>
+                      </RestartOnFailure>
                     </LogonTrigger>
                   </Triggers>
                   <Principals>
