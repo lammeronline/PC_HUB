@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    name: Firmware (PlatformIO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware (esp32dev)
+        run: pio run -e esp32dev
+
+      - name: Check generated WebUI.h is committed and up to date
+        run: |
+          git diff --exit-code -- src/WebUI.h || {
+            echo "::error::src/WebUI.h is out of date with src/WebUI.html — run 'pio run' locally and commit the regenerated file.";
+            exit 1;
+          }
+
+      - name: Upload firmware.bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: .pio/build/esp32dev/firmware.bin
+          if-no-files-found: error
+
+  pcagent:
+    name: PC Agent (.NET)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: PCAgent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Publish
+        run: dotnet publish -c Release -o build --no-restore
+
+      - name: Upload PCAgent build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PCAgent
+          path: PCAgent/build
+          if-no-files-found: error

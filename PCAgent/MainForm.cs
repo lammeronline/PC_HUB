@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.IO.Ports;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -703,13 +704,67 @@ public class MainForm : Form
         if (enabled)
         {
             string exe = Application.ExecutablePath;
-            // Create a logon task with highest privileges so the app gets admin rights at startup
-            string args = $"/create /tn \"{taskName}\" /tr \"\\\"{exe}\\\"\" /sc onlogon /rl highest /f";
-            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("schtasks.exe", args)
+            // Create via an XML definition (not the plain /create flags) so we can turn off
+            // the battery-related conditions. schtasks /create without /xml defaults to
+            // DisallowStartIfOnBatteries=true and StopIfGoingOnBatteries=true, which kills
+            // this tray monitor the moment the laptop is undocked (switches to battery) and
+            // won't let it restart until back on AC — exactly the "tray icon just vanishes"
+            // symptom this is meant to prevent. Also drop the default 72h ExecutionTimeLimit.
+            string xmlPath = Path.Combine(Path.GetTempPath(), "PCHubAgentTask.xml");
+            string xml = $"""
+                <?xml version="1.0" encoding="UTF-16"?>
+                <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+                  <Triggers>
+                    <LogonTrigger>
+                      <Enabled>true</Enabled>
+                    </LogonTrigger>
+                  </Triggers>
+                  <Principals>
+                    <Principal id="Author">
+                      <LogonType>InteractiveToken</LogonType>
+                      <RunLevel>HighestAvailable</RunLevel>
+                    </Principal>
+                  </Principals>
+                  <Settings>
+                    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+                    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+                    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+                    <AllowHardTerminate>true</AllowHardTerminate>
+                    <StartWhenAvailable>false</StartWhenAvailable>
+                    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+                    <IdleSettings>
+                      <StopOnIdleEnd>false</StopOnIdleEnd>
+                      <RestartOnIdle>false</RestartOnIdle>
+                    </IdleSettings>
+                    <AllowStartOnDemand>true</AllowStartOnDemand>
+                    <Enabled>true</Enabled>
+                    <Hidden>false</Hidden>
+                    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+                    <WakeToRun>false</WakeToRun>
+                    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+                    <Priority>7</Priority>
+                  </Settings>
+                  <Actions Context="Author">
+                    <Exec>
+                      <Command>"{System.Security.SecurityElement.Escape(exe)}"</Command>
+                    </Exec>
+                  </Actions>
+                </Task>
+                """;
+            File.WriteAllText(xmlPath, xml, System.Text.Encoding.Unicode);
+            try
             {
-                CreateNoWindow = true, UseShellExecute = false
-            });
-            p?.WaitForExit();
+                using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "schtasks.exe", $"/create /tn \"{taskName}\" /xml \"{xmlPath}\" /f")
+                {
+                    CreateNoWindow = true, UseShellExecute = false
+                });
+                p?.WaitForExit();
+            }
+            finally
+            {
+                try { File.Delete(xmlPath); } catch { }
+            }
         }
         else
         {

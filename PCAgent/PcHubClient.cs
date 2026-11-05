@@ -40,7 +40,11 @@ public class PcHubClient : IDisposable
         {
             _httpClient = new HttpClient
             {
-                Timeout = TimeSpan.FromSeconds(3)
+                // The device's WebServer handles one client at a time; if the web
+                // dashboard is also polling it, a request can briefly queue behind
+                // it. 3s was too tight and caused frequent false "offline" flashes
+                // from that queueing alone, not an actual dropped connection.
+                Timeout = TimeSpan.FromSeconds(6)
             };
             // HTTP client is considered "ready" immediately; actual connection is tested on first send
             TransportInfo = $"{_settings.WifiHost}:{_settings.WifiPort}";
