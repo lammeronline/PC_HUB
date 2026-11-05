@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -77,3 +78,31 @@ jobs:
           name: PCAgent
           path: PCAgent/build
           if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [firmware, pcagent]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download firmware artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: artifacts/firmware
+
+      - name: Download PCAgent artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: PCAgent
+          path: artifacts/pcagent
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/firmware/firmware.bin
+            artifacts/pcagent/PCAgent.exe
