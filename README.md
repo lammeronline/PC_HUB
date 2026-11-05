@@ -1,8 +1,10 @@
 # PCHUB
 
+[![Build](https://github.com/lammeronline/PC_HUB/actions/workflows/build.yml/badge.svg)](https://github.com/lammeronline/PC_HUB/actions/workflows/build.yml)
+
 An ESP32-based environmental monitoring hub with a 320×240 TFT display, web dashboard, and PC hardware monitoring. Measures temperature, humidity, pressure, CO₂ equivalent, and VOC; shows a 7-day weather forecast; tracks CPU/GPU/RAM metrics from a companion Windows agent; and integrates with Telegram and MQTT.
 
-**Firmware version:** 2.0.0
+**Firmware version:** 2.1.1
 
 ---
 
@@ -95,8 +97,8 @@ Use 100–330 Ω resistors in series with each leg.
 ### Build & flash
 
 ```bash
-git clone https://github.com/yourname/pchub
-cd pchub
+git clone https://github.com/lammeronline/PC_HUB
+cd PC_HUB
 
 # Build firmware (WebUI.html is converted to WebUI.h automatically by pre_build.py)
 pio run -e esp32dev
@@ -108,6 +110,10 @@ pio run -e esp32dev --target upload
 ### Modifying the web UI
 
 Edit `src/WebUI.html` — the pre-build script converts it to `src/WebUI.h` automatically on every `pio run`. Do not edit `WebUI.h` directly.
+
+### Continuous integration
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) builds the firmware (PlatformIO) and the PC Agent (`dotnet build`/`publish`) on every push/PR to `main`. The firmware job also fails if the committed `src/WebUI.h` doesn't match what regenerating it from `src/WebUI.html` produces, so a `WebUI.html` edit that wasn't rebuilt before committing gets caught instead of silently shipping a stale UI.
 
 ---
 
@@ -217,6 +223,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 | POST | `/api/history/clear` | Clear in-memory history buffers |
 | POST | `/api/reboot` | Reboot the device |
 | POST | `/api/ntp/sync` | Trigger an immediate NTP resync and RTC update (no reboot required) |
+| POST | `/api/time/set` | Set the RTC directly from a given date/time (fallback for when NTP is unreachable) |
 | POST | `/api/factory-reset` | Erase all NVS settings and reboot |
 
 ### `/api/status` response structure
@@ -224,7 +231,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 ```json
 {
   "ok": true,
-  "fw_version": "2.0.0",
+  "fw_version": "2.1.1",
   "ip": "192.168.1.42",
   "device": "pchub",
   "hostname": "pchub.local",
@@ -313,6 +320,32 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 | `ntp_auto_dst` | bool | When true, ignore `ntp_offset_sec` and apply `ntp_tz_rule` instead, so the UTC offset switches automatically for daylight saving |
 | `ntp_tz_rule` | string | POSIX TZ rule (e.g. `EET-2EEST,M3.5.0/3,M10.5.0/4` for Kyiv/EU); only used when `ntp_auto_dst` is true |
 
+### `/api/ip` POST keys
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `static_enabled` | bool | Use a fixed IP instead of DHCP |
+| `static_ip` / `static_gw` / `static_sn` / `static_dns` | string | Static IP, gateway, subnet mask, DNS |
+| `ap_ip` | string | AP mode IP address (default `192.168.4.1`) |
+| `ap_retry_min` | int 0–60 | While in AP fallback mode, retry the saved Wi-Fi network at this interval (minutes); `0` disables the retry. Default 5 — see [AP mode auto-recovery](#features) |
+
+### `/api/time/set` POST body
+
+Sets the RTC directly, independent of NTP — used by the **Set from this browser** button in Settings → NTP for networks where the device can't reach an NTP server (e.g. UDP/123 outbound unavailable).
+
+```json
+{ "y": 2026, "mo": 11, "d": 5, "h": 14, "mi": 30, "s": 0 }
+```
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `y` | int 2000–2099 | Year |
+| `mo` | int 1–12 | Month |
+| `d` | int 1–31 | Day |
+| `h` | int 0–23 | Hour |
+| `mi` | int 0–59 | Minute |
+| `s` | int 0–59 | Second |
+
 ### History data format
 
 `GET /api/history?range=24h` returns:
@@ -374,6 +407,7 @@ Settings are saved to `%LOCALAPPDATA%\PCHub\settings.json`.
 | Update interval | Seconds between metric pushes (1–60, default 2) |
 | Minimize to tray on close | Keep running in the notification area |
 | Start minimized to tray | Launch hidden |
+| Run on startup | Registers a Task Scheduler entry (`PCHUB Agent`) that launches at logon with the elevated rights the agent needs — avoids a UAC prompt every login (a plain registry `Run` key can't start elevated silently). Keeps running on battery power; doesn't stop if the laptop is undocked. |
 | Send battery status to display | Enable battery icon on device (laptops only) |
 
 ### Data sent to device

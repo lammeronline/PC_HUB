@@ -45,6 +45,7 @@ PCHUB/
 │   ├── build_web_ui.py          # Ручная сборка заголовка веб-интерфейса
 │   ├── build_web_ui.bat         # Обёртка для Windows
 │   └── build_firmware.bat       # Обёртка сборки прошивки
+├── .github/workflows/build.yml  # CI: сборка прошивки (PlatformIO) и PCAgent (dotnet) на push/PR
 ├── platformio.ini               # Конфигурация PlatformIO и зависимости
 ├── PCHUB.sln                    # Solution для IDE
 ├── README.md                    # Документация, настройка и API
@@ -76,7 +77,8 @@ SD-card          ↔ Logger + API history
 
 - Прошивка: PlatformIO, окружение определено в `platformio.ini`.
 - Перед сборкой `tools/pre_build.py` упаковывает `src/WebUI.html` в `src/WebUI.h`; вручную править сгенерированный заголовок не следует.
-- Агент: `PCAgent/PCAgent.csproj`, `net10.0-windows`, x64; зависимость — `LibreHardwareMonitorLib` 0.9.3.
+- Агент: `PCAgent/PCAgent.csproj`, `net10.0-windows`, x64; зависимость — `LibreHardwareMonitorLib` 0.9.3. Автозапуск агента регистрируется через Task Scheduler (XML-определение в `MainForm.SetStartupEnabled`, с явно отключёнными `DisallowStartIfOnBatteries`/`StopIfGoingOnBatteries`), а не через ключ реестра `Run` — это даёт повышенные права без UAC-запроса при каждом входе и не роняет процесс при переходе на питание от батареи (например, при отстыковке ноутбука от дока).
+- CI: `.github/workflows/build.yml` на каждый push/PR в `main` собирает и прошивку, и PCAgent, плюс проверяет, что `WebUI.h` не разошёлся с `WebUI.html`.
 
 ## Важные точки изменения
 
