@@ -35,12 +35,23 @@ jobs:
       - name: Build firmware (esp32dev)
         run: pio run -e esp32dev
 
-      - name: Check generated WebUI.h is committed and up to date
+      - name: Check committed WebUI.h matches WebUI.html
+        # Compares decompressed content, not raw gzip bytes: DEFLATE output isn't
+        # bit-for-bit reproducible across zlib versions/platforms, so a plain
+        # `git diff` on the regenerated file flags false positives whenever CI's
+        # Python links a different zlib than whoever last built it locally.
         run: |
-          git diff --exit-code -- src/WebUI.h || {
-            echo "::error::src/WebUI.h is out of date with src/WebUI.html — run 'pio run' locally and commit the regenerated file.";
-            exit 1;
-          }
+          python3 -c "
+          import gzip, re, pathlib, sys
+          h = pathlib.Path('src/WebUI.h').read_text()
+          hexes = re.findall(r'0x([0-9a-fA-F]{2})', h.split('WEB_INDEX_GZ[]')[1])
+          embedded = gzip.decompress(bytes(int(x, 16) for x in hexes))
+          html = pathlib.Path('src/WebUI.html').read_bytes()
+          if embedded != html:
+              print('::error::src/WebUI.h does not decompress to the current src/WebUI.html — run \'pio run\' locally and commit the regenerated file.')
+              sys.exit(1)
+          print('WebUI.h matches WebUI.html (decompressed content identical)')
+          "
 
       - name: Upload firmware.bin
         uses: actions/upload-artifact@v4
