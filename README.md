@@ -4,7 +4,7 @@
 
 An ESP32-based environmental monitoring hub with a 320×240 TFT display, web dashboard, and PC hardware monitoring. Measures temperature, humidity, pressure, CO₂ equivalent, and VOC; shows a 7-day weather forecast; tracks CPU/GPU/RAM metrics from a companion Windows agent; and integrates with Telegram and MQTT.
 
-**Firmware version:** 2.1.1
+**Firmware version:** 2.1.2
 
 ---
 
@@ -231,7 +231,7 @@ Base URL: `http://pchub.local` (or device IP, port 80).
 ```json
 {
   "ok": true,
-  "fw_version": "2.1.1",
+  "fw_version": "2.1.2",
   "ip": "192.168.1.42",
   "device": "pchub",
   "hostname": "pchub.local",
