@@ -464,23 +464,37 @@ public class MainForm : Form
         _trayMenu.Items.Add(new ToolStripSeparator());
         _trayMenu.Items.Add(exitItem);
 
+        var (icon0, handle0) = CreateTrayIcon(ColMuted);
+        _trayIconHandle = handle0;
         _trayIcon = new NotifyIcon
         {
-            Text = "PCHUB Agent", Icon = CreateTrayIcon(ColMuted),
+            Text = "PCHUB Agent", Icon = icon0,
             ContextMenuStrip = _trayMenu, Visible = true
         };
         _lastTrayColor = ColMuted;
         _trayIcon.DoubleClick += (_, _) => ToggleVisibility();
     }
 
+    IntPtr _trayIconHandle = IntPtr.Zero;
+
     void SwapTrayIcon(Color color)
     {
-        var old = _trayIcon.Icon;
-        _trayIcon.Icon = CreateTrayIcon(color);
-        old?.Dispose();
+        var oldIcon   = _trayIcon.Icon;
+        var oldHandle = _trayIconHandle;
+        var (icon, handle) = CreateTrayIcon(color);
+        _trayIcon.Icon  = icon;
+        _trayIconHandle = handle;
+        // Icon.Dispose() does NOT free a handle obtained via Icon.FromHandle (by
+        // design — see the docs for FromHandle) — only DestroyIcon actually does.
+        // Without this, every status colour change (e.g. online/offline flicker)
+        // permanently leaked one GDI handle until the process ran out of them,
+        // at which point every further GDI+ draw call started throwing
+        // "A generic error occurred in GDI+."
+        oldIcon?.Dispose();
+        if (oldHandle != IntPtr.Zero) DestroyIcon(oldHandle);
     }
 
-    static Icon CreateTrayIcon(Color statusColor)
+    static (Icon icon, IntPtr handle) CreateTrayIcon(Color statusColor)
     {
         using var bmp = new Bitmap(16, 16);
         using var g   = Graphics.FromImage(bmp);
@@ -492,8 +506,12 @@ public class MainForm : Form
         using (var pen = new Pen(ColCyan, 1.5f)) g.DrawLine(pen, 5f, 13f, 11f, 13f);
         using (var b = new SolidBrush(statusColor)) g.FillEllipse(b, 0f, 11f, 5f, 5f);
         using (var pen = new Pen(Color.FromArgb(160, 0, 0, 0), 0.8f)) g.DrawEllipse(pen, 0f, 11f, 5f, 5f);
-        return Icon.FromHandle(bmp.GetHicon());
+        IntPtr hIcon = bmp.GetHicon();
+        return (Icon.FromHandle(hIcon), hIcon);
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool DestroyIcon(IntPtr hIcon);
 
     // ══════════════════════════════════════════════════════════════════════════
     // Timer / data loop
@@ -695,6 +713,7 @@ public class MainForm : Form
     {
         _timer.Stop(); _timer.Dispose(); _monitor.Dispose(); _client.Dispose();
         _trayIcon.Visible = false; _trayIcon.Dispose(); _appIcon?.Dispose();
+        if (_trayIconHandle != IntPtr.Zero) DestroyIcon(_trayIconHandle);
         base.OnFormClosed(e);
     }
 
