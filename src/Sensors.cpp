@@ -108,41 +108,24 @@ void applyNtpConfig() {
 }
 
 bool syncRTCfromNTP() {
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("NTP: skipped, WiFi not connected");
-        return false;
-    }
+    if (WiFi.status() != WL_CONNECTED) return false;
 
-    String ntpServer = RuntimeSettings::ntpServer();
-    IPAddress resolved;
-    bool dnsOk = WiFi.hostByName(ntpServer.c_str(), resolved);
-    Serial.printf("NTP: server=%s dns=%s ip=%s local=%s gw=%s dns1=%s\n",
-        ntpServer.c_str(),
-        dnsOk ? "OK" : "FAIL",
-        dnsOk ? resolved.toString().c_str() : "-",
-        WiFi.localIP().toString().c_str(),
-        WiFi.gatewayIP().toString().c_str(),
-        WiFi.dnsIP(0).toString().c_str());
-
+    // Reverted to a single applyNtpConfig() call (one sntp_init()) instead of
+    // re-running it on every retry: an experiment comparing this against the
+    // repeated-reinit version on the same network showed the simple version
+    // syncing reliably within ~10-15s on 3/3 fresh boots, while repeatedly
+    // tearing down and restarting the SNTP session on each retry made failures
+    // more common, not less — likely destabilizing, not helping, lwIP's sntp
+    // state machine. Keep it to one init; just poll it a couple of times.
     applyNtpConfig();
 
     struct tm timeinfo;
-    // Each retry re-resolves/restarts SNTP (applyNtpConfig), not just polls longer —
-    // the configured pool hostname round-robins to a different server on each DNS
-    // lookup, and a single unresponsive pool member can't be waited out by polling
-    // the same session longer; a fresh attempt gives a fresh server a chance.
+    // First attempt — network may still be settling after fresh connect
     if (!getLocalTime(&timeinfo, 4000)) {
-        Serial.println("NTP: attempt 1 FAILED, retrying with fresh DNS");
-        delay(1000);
-        applyNtpConfig();
-        if (!getLocalTime(&timeinfo, 5000)) {
-            Serial.println("NTP: attempt 2 FAILED, retrying with fresh DNS");
-            delay(1000);
-            applyNtpConfig();
-            if (!getLocalTime(&timeinfo, 5000)) {
-                Serial.println("NTP: attempt 3 FAILED, giving up");
-                return false;
-            }
+        delay(1500);
+        if (!getLocalTime(&timeinfo, 4000)) {
+            Serial.println("NTP: time FAILED");
+            return false;
         }
     }
 
