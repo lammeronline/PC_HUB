@@ -697,7 +697,14 @@ static void handleSettingsPost() {
         RuntimeSettings::saveNtpTzRule(doc["ntp_tz_rule"].as<String>());
         ntpChanged = true;
     }
-    if (ntpChanged) applyNtpConfig();
+    // Deliberately NOT calling applyNtpConfig() here: it tears down and restarts
+    // lwIP's sntp session (sntp_stop+sntp_init), and if a sync (manual, periodic,
+    // or the 60s self-heal retry) lands within a second or two of a settings save,
+    // two re-inits in quick succession reliably broke NTP in testing — the same
+    // destabilization already fixed inside syncRTCfromNTP()'s own retry loop, just
+    // triggered from this second call site instead. The next sync picks up the new
+    // settings on its own; this just skips the extra, avoidable re-init. ntpChanged
+    // is still used below to report ntp_changed in the response.
 
     if (doc["device"].is<const char*>() || doc["hostname"].is<const char*>()) {
         String deviceName = doc["device"] | RuntimeSettings::deviceName();

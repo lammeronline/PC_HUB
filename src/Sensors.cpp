@@ -99,11 +99,20 @@ void initSensors() {
 
 
 void applyNtpConfig() {
-    String ntpServer = RuntimeSettings::ntpServer();
+    // ntpServerBuf must outlive this call: lwIP's sntp module (configTime/configTzTime
+    // -> sntp_setservername) stores a raw pointer to the server name, not a copy, and
+    // resolves it later/asynchronously, not synchronously within this call. A local
+    // String here would be destroyed the instant this function returns, leaving lwIP
+    // with a dangling pointer — the first call after boot can still appear to work
+    // (the freed heap bytes haven't been reused yet), but any later call reads
+    // whatever has since overwritten that memory and fails to resolve. Plain static
+    // char array (not static String) — no constructor/destructor registration needed.
+    static char ntpServerBuf[64];
+    RuntimeSettings::ntpServer().toCharArray(ntpServerBuf, sizeof(ntpServerBuf));
     if (RuntimeSettings::ntpAutoDst()) {
-        configTzTime(RuntimeSettings::ntpTzRule().c_str(), ntpServer.c_str());
+        configTzTime(RuntimeSettings::ntpTzRule().c_str(), ntpServerBuf);
     } else {
-        configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServer.c_str());
+        configTime(RuntimeSettings::ntpOffsetSec(), 0, ntpServerBuf);
     }
 }
 
