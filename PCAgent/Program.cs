@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -31,6 +32,18 @@ static class Program
 
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => LogCrash("Application.ThreadException", e.Exception);
+
+        // This is a lightweight monitor that still needs to report in reliably when
+        // the machine it's watching is the one under heavy load — exactly when a
+        // user most wants to see CPU/GPU numbers. At default (Normal) priority it
+        // competes evenly with whatever is pegging all cores at 100%, and under
+        // real contention its own timer ticks, sensor reads and HTTP send can all
+        // get delayed past the send timeout, surfacing as "WiFi timeout — device
+        // unreachable" even though the device and network are fine. AboveNormal
+        // gives the scheduler a reason to favor it without going so far as
+        // High/Realtime, which could itself destabilize the host.
+        try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.AboveNormal; }
+        catch { /* never let a priority-class failure stop the app from starting */ }
 
         ApplicationConfiguration.Initialize();
         Application.Run(new MainForm());
